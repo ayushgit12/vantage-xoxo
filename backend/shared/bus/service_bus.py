@@ -26,7 +26,8 @@ def _get_local_queue(name: str) -> asyncio.Queue:
 async def send_message(queue_name: str, body: dict[str, Any]) -> None:
     settings = get_settings()
     if settings.service_bus_connection_string:
-        from azure.servicebus.aio import ServiceBusClient, ServiceBusMessage
+        from azure.servicebus.aio import ServiceBusClient
+        from azure.servicebus import ServiceBusMessage
 
         async with ServiceBusClient.from_connection_string(
             settings.service_bus_connection_string

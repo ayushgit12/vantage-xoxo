@@ -17,7 +17,7 @@ async def create_goal(
     user_id: str = Depends(get_current_user_id),
 ):
     goal = Goal(user_id=user_id, **body.model_dump())
-    await goals_repo.insert(goal.model_dump())
+    await goals_repo.insert(goal.model_dump(mode="json"))
     return goal
 
 
@@ -44,7 +44,7 @@ async def update_goal(
     doc = await goals_repo.find_by_id(goal_id)
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
-    updates = body.model_dump(exclude_none=True)
+    updates = body.model_dump(exclude_none=True, mode="json")
     if updates:
         await goals_repo.update(goal_id, updates)
     updated = await goals_repo.find_by_id(goal_id)

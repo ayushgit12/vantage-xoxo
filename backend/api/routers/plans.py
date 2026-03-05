@@ -1,13 +1,14 @@
 """Plan generation and retrieval endpoints."""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_current_user_id
 from shared.models import Plan
 from shared.db.repositories import plans_repo, goals_repo
-from shared.bus.service_bus import send_message
-from shared.config import get_settings
+from agents.planner.agent import run_planner
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -17,17 +18,23 @@ async def generate_plan(
     window: int = Query(default=7, ge=1, le=30),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Enqueue a planner job for the given goal."""
+    """Run the planner agent for the given goal."""
     doc = await goals_repo.find_by_id(goal_id)
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
 
-    settings = get_settings()
-    await send_message(
-        settings.service_bus_queue_planner,
-        {"goal_id": goal_id, "user_id": user_id, "window_days": window},
-    )
-    return {"status": "queued", "goal_id": goal_id, "window": window}
+    try:
+        plan = await run_planner(goal_id, user_id, window_days=window)
+        return {
+            "status": "completed",
+            "goal_id": goal_id,
+            "plan_id": plan.plan_id,
+            "blocks": len(plan.micro_blocks),
+            "window": window,
+        }
+    except Exception as e:
+        logger.exception("Planner failed for goal %s", goal_id)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{plan_id}", response_model=Plan)

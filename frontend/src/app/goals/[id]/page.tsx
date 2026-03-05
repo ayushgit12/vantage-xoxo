@@ -46,8 +46,7 @@ export default function GoalDetailPage() {
     setActionLoading("ingest");
     try {
       await triggerIngest(goalId);
-      // Poll for completion
-      setTimeout(loadData, 3000);
+      await loadData();
     } catch (e) {
       console.error(e);
     } finally {
@@ -59,7 +58,7 @@ export default function GoalDetailPage() {
     setActionLoading("plan");
     try {
       await generatePlan(goalId);
-      setTimeout(loadData, 3000);
+      await loadData();
     } catch (e) {
       console.error(e);
     } finally {

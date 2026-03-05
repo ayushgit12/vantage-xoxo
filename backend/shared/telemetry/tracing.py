@@ -3,7 +3,7 @@
 import logging
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
 
 from shared.config import get_settings
@@ -22,13 +22,16 @@ def init_tracing(service_name: str = "vantage") -> None:
     provider = TracerProvider(resource=resource)
 
     if settings.applicationinsights_connection_string:
-        from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
+        try:
+            from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
 
-        exporter = AzureMonitorTraceExporter(
-            connection_string=settings.applicationinsights_connection_string
-        )
-        provider.add_span_processor(BatchSpanExporter(exporter))
-        logger.info("Azure Application Insights tracing enabled")
+            exporter = AzureMonitorTraceExporter(
+                connection_string=settings.applicationinsights_connection_string
+            )
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            logger.info("Azure Application Insights tracing enabled")
+        except Exception as exc:
+            logger.warning("Could not initialize App Insights exporter: %s", exc)
     else:
         logger.info("No App Insights connection string; tracing to console only")
 
