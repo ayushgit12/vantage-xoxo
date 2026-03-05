@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+  # ─── MongoDB (local Cosmos DB substitute) ───
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: vantage
+
+  # ─── Azure Storage Emulator (Azurite) ───
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "10000:10000"   # Blob
+      - "10001:10001"   # Queue
+      - "10002:10002"   # Table
+    volumes:
+      - azurite_data:/data
+
+  # ─── Backend API ───
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - COSMOS_CONNECTION_STRING=mongodb://mongodb:27017/vantage
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      - USE_MOCK_CALENDAR=true
+    depends_on:
+      - mongodb
+      - azurite
+    volumes:
+      - ./backend:/app
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Retriever Agent Worker ───
+  retriever-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - COSMOS_CONNECTION_STRING=mongodb://mongodb:27017/vantage
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    depends_on:
+      - mongodb
+      - azurite
+    volumes:
+      - ./backend:/app
+    command: python -m agents.retriever.worker
+
+  # ─── Planner Agent Worker ───
+  planner-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - COSMOS_CONNECTION_STRING=mongodb://mongodb:27017/vantage
+    depends_on:
+      - mongodb
+    volumes:
+      - ./backend:/app
+    command: python -m agents.planner.worker
+
+  # ─── Executor Agent Worker ───
+  executor-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - COSMOS_CONNECTION_STRING=mongodb://mongodb:27017/vantage
+      - USE_MOCK_CALENDAR=true
+    depends_on:
+      - mongodb
+    volumes:
+      - ./backend:/app
+    command: python -m agents.executor.worker
+
+  # ─── Frontend ───
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - ./frontend/src:/app/src
+
+volumes:
+  mongo_data:
+  azurite_data:

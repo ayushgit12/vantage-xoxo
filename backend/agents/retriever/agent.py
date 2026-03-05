@@ -1,0 +1,102 @@
+"""Retriever Agent — orchestrates parsing, extraction, estimation, and knowledge building.
+
+Uses Semantic Kernel for agent orchestration.
+LLM is used ONLY for topic/milestone extraction from text chunks.
+Hour estimation is rule-based.
+"""
+
+import logging
+import time
+from uuid import uuid4
+
+from shared.config import get_settings
+from shared.models import GoalKnowledge, AgentLog
+from shared.db.repositories import goals_repo, knowledge_repo, logs_repo
+from shared.bus.service_bus import send_message
+from shared.telemetry.tracing import get_tracer
+
+from agents.retriever.parsers import parse_all_materials
+from agents.retriever.chunker import chunk_text
+from agents.retriever.extractor import extract_topics_and_milestones
+from agents.retriever.estimator import estimate_hours
+from agents.retriever.web_supplement import supplement_if_needed
+from agents.retriever.knowledge_builder import build_knowledge
+
+logger = logging.getLogger(__name__)
+tracer = get_tracer("retriever")
+
+
+async def run_retriever(goal_id: str, user_id: str) -> GoalKnowledge:
+    """Full retriever pipeline for a goal."""
+    trace_id = str(uuid4())
+    t0 = time.monotonic()
+
+    with tracer.start_as_current_span("retriever.run", attributes={"goal_id": goal_id}):
+        # 1. Load goal
+        goal_doc = await goals_repo.find_by_id(goal_id)
+        if not goal_doc:
+            raise ValueError(f"Goal {goal_id} not found")
+
+        # 2. Parse all materials (files + URLs)
+        raw_texts, resource_refs = await parse_all_materials(
+            goal_doc.get("uploaded_file_ids", []),
+            goal_doc.get("material_urls", []),
+        )
+
+        # 3. Chunk text for LLM processing
+        chunks = chunk_text(raw_texts)
+
+        # 4. Extract topics and milestones via LLM
+        extracted = await extract_topics_and_milestones(
+            chunks=chunks,
+            goal_title=goal_doc["title"],
+            goal_category=goal_doc.get("category", "other"),
+        )
+
+        # 5. Estimate hours per topic (rule-based)
+        topics_with_hours = estimate_hours(extracted["topics"], raw_texts)
+
+        # 6. Supplement with web resources if needed
+        settings = get_settings()
+        if not goal_doc.get("prefer_user_materials_only", False):
+            topics_with_hours, extra_refs = await supplement_if_needed(
+                topics=topics_with_hours,
+                goal_title=goal_doc["title"],
+                confidence=extracted.get("confidence", 0.5),
+            )
+            resource_refs.extend(extra_refs)
+
+        # 7. Build final GoalKnowledge
+        knowledge = build_knowledge(
+            goal_id=goal_id,
+            topics=topics_with_hours,
+            milestones=extracted.get("milestones", []),
+            resource_refs=resource_refs,
+            confidence=extracted.get("confidence", 0.5),
+        )
+
+        # 8. Persist
+        await knowledge_repo.upsert(goal_id, knowledge.model_dump(), id_field="goal_id")
+        await goals_repo.update(goal_id, {"knowledge_id": knowledge.knowledge_id})
+
+        # 9. Log
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        log = AgentLog(
+            agent_name="retriever",
+            trace_id=trace_id,
+            decision_summary=f"Extracted {len(knowledge.topics)} topics, {knowledge.estimated_total_hours:.1f}h total",
+            duration_ms=duration_ms,
+        )
+        await logs_repo.insert(log.model_dump())
+
+        # 10. Trigger planner
+        await send_message(
+            settings.service_bus_queue_planner,
+            {"goal_id": goal_id, "user_id": user_id, "window_days": 7},
+        )
+
+        logger.info(
+            "Retriever completed for goal %s: %d topics, %.1fh total (trace=%s)",
+            goal_id, len(knowledge.topics), knowledge.estimated_total_hours, trace_id,
+        )
+        return knowledge
