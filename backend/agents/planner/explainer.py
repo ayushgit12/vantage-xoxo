@@ -1,10 +1,11 @@
 """Plan explainer — optional LLM-generated explanation of planner decisions.
 
 This is the ONLY optional LLM call in the planner.
-If no Azure OpenAI key, returns a simple template-based explanation.
+Uses Gemini free tier. If no key, returns a simple template-based explanation.
 """
 
 import logging
+import google.generativeai as genai
 from shared.models import Plan, GoalKnowledge
 from shared.config import get_settings
 from shared.cache.cache import get_cached, set_cached
@@ -32,34 +33,27 @@ async def explain_plan(plan: Plan, knowledge: GoalKnowledge) -> str:
 
     explanation += "Blocks are scheduled in your preferred time windows, respecting all constraints."
 
-    # Optionally enhance with LLM
-    if settings.azure_openai_api_key:
+    # Optionally enhance with Gemini
+    if settings.gemini_api_key:
         cache_key = {"op": "explain_plan", "plan_id": plan.plan_id}
         cached = await get_cached(cache_key)
         if cached:
             return cached.get("explanation", explanation)
 
         try:
-            from openai import AsyncAzureOpenAI
-
-            client = AsyncAzureOpenAI(
-                azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-                api_version=settings.azure_openai_api_version,
+            genai.configure(api_key=settings.gemini_api_key)
+            model = genai.GenerativeModel(settings.gemini_model)
+            resp = model.generate_content(
+                f"Explain this study plan concisely in 2-3 sentences: {explanation}",
+                generation_config=genai.GenerationConfig(
+                    temperature=0.0,
+                    max_output_tokens=200,
+                ),
             )
-            resp = await client.chat.completions.create(
-                model=settings.azure_openai_deployment,
-                messages=[
-                    {"role": "system", "content": "You explain study plans concisely in 2-3 sentences."},
-                    {"role": "user", "content": f"Explain this plan: {explanation}"},
-                ],
-                temperature=0.0,
-                max_tokens=200,
-            )
-            llm_explanation = resp.choices[0].message.content
+            llm_explanation = resp.text.strip()
             await set_cached(cache_key, {"explanation": llm_explanation})
             return llm_explanation
         except Exception as e:
-            logger.warning("LLM explanation failed, using template: %s", e)
+            logger.warning("Gemini explanation failed, using template: %s", e)
 
     return explanation

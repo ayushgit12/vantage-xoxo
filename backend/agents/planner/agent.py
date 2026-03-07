@@ -45,11 +45,13 @@ async def run_planner(
         if not knowledge_doc:
             raise ValueError(f"No GoalKnowledge for goal {goal_id}")
         knowledge = GoalKnowledge(**knowledge_doc)
+        logger.info("Loaded knowledge: %d topics, %.1fh total", len(knowledge.topics), knowledge.estimated_total_hours)
 
         # 2. Load goal
         goal_doc = await goals_repo.find_by_id(goal_id)
         if not goal_doc:
             raise ValueError(f"Goal {goal_id} not found")
+        logger.info("Goal deadline: %s", goal_doc.get("deadline"))
 
         # 3. Load user profile (or defaults)
         user_doc = await users_repo.find_by_id(user_id, id_field="user_id")
@@ -75,6 +77,7 @@ async def run_planner(
             target_weekly_effort=goal_doc.get("target_weekly_effort"),
             window_days=window_days,
         )
+        logger.info("Macro allocations: %d entries", len(macro))
 
         # 7. Schedule micro blocks (deterministic)
         micro_blocks = schedule_micro_blocks(
@@ -83,6 +86,7 @@ async def run_planner(
             availability=availability,
             seed=DEFAULT_SEED,
         )
+        logger.info("Micro blocks scheduled: %d", len(micro_blocks))
 
         # 8. Build plan
         plan = Plan(
@@ -96,7 +100,7 @@ async def run_planner(
         )
 
         # 9. Persist
-        await plans_repo.upsert(plan.plan_id, plan.model_dump(), id_field="plan_id")
+        await plans_repo.upsert(plan.plan_id, plan.model_dump(mode="json"), id_field="plan_id")
         await goals_repo.update(goal_id, {"active_plan_id": plan.plan_id})
 
         # 10. Log
@@ -109,7 +113,7 @@ async def run_planner(
             ),
             duration_ms=duration_ms,
         )
-        await logs_repo.insert(log.model_dump())
+        await logs_repo.insert(log.model_dump(mode="json"))
 
         # 11. Trigger executor for calendar sync
         settings = get_settings()

@@ -33,7 +33,7 @@ async def send_message(queue_name: str, body: dict[str, Any]) -> None:
             settings.service_bus_connection_string
         ) as client:
             async with client.get_queue_sender(queue_name) as sender:
-                msg = ServiceBusMessage(json.dumps(body))
+                msg = ServiceBusMessage(json.dumps(body, default=str))
                 await sender.send_messages(msg)
                 logger.info("Sent message to Service Bus queue %s", queue_name)
     else:

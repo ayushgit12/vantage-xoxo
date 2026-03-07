@@ -47,7 +47,7 @@ async def run_executor(plan_id: str, user_id: str, action: str = "sync_calendar"
             # Update plan with external event IDs
             await plans_repo.update(
                 plan_id,
-                {"micro_blocks": [b.model_dump() for b in plan.micro_blocks]},
+                {"micro_blocks": [b.model_dump(mode="json") for b in plan.micro_blocks]},
                 id_field="plan_id",
             )
 
@@ -59,7 +59,7 @@ async def run_executor(plan_id: str, user_id: str, action: str = "sync_calendar"
             decision_summary=f"Action={action}: synced {len(plan.micro_blocks)} blocks",
             duration_ms=duration_ms,
         )
-        await logs_repo.insert(log.model_dump())
+        await logs_repo.insert(log.model_dump(mode="json"))
 
         logger.info(
             "Executor completed: action=%s, %d blocks (trace=%s)",

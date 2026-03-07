@@ -76,7 +76,7 @@ async def run_retriever(goal_id: str, user_id: str) -> GoalKnowledge:
         )
 
         # 8. Persist
-        await knowledge_repo.upsert(goal_id, knowledge.model_dump(), id_field="goal_id")
+        await knowledge_repo.upsert(goal_id, knowledge.model_dump(mode="json"), id_field="goal_id")
         await goals_repo.update(goal_id, {"knowledge_id": knowledge.knowledge_id})
 
         # 9. Log
@@ -87,7 +87,7 @@ async def run_retriever(goal_id: str, user_id: str) -> GoalKnowledge:
             decision_summary=f"Extracted {len(knowledge.topics)} topics, {knowledge.estimated_total_hours:.1f}h total",
             duration_ms=duration_ms,
         )
-        await logs_repo.insert(log.model_dump())
+        await logs_repo.insert(log.model_dump(mode="json"))
 
         # 10. Trigger planner
         await send_message(

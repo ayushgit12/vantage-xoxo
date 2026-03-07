@@ -1,7 +1,7 @@
 """Reminder and daily summary logic."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from shared.models import Plan, MicroBlock, BlockStatus
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 def generate_daily_summary(plan: Plan, target_date: datetime | None = None) -> dict:
     """Generate a summary of blocks for a given day."""
     if target_date is None:
-        target_date = datetime.utcnow()
+        target_date = datetime.now(timezone.utc)
 
     day_start = target_date.replace(hour=0, minute=0, second=0)
     day_end = day_start + timedelta(days=1)

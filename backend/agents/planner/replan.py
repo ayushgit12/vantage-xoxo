@@ -5,7 +5,7 @@ unless the user explicitly accepts.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from shared.models import Plan, MicroBlock, BlockStatus
 
@@ -24,7 +24,7 @@ def compute_replan_diff(
     new_ids = {b.block_id for b in new_blocks}
 
     # Blocks in existing that are done or in the past: keep them
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     kept = [
         b for b in existing_plan.micro_blocks
         if b.status == BlockStatus.DONE or b.start_dt < now
@@ -43,8 +43,8 @@ def compute_replan_diff(
         "kept": len(kept),
         "added": len(added),
         "removed": len(removed),
-        "added_blocks": [b.model_dump() for b in added],
-        "removed_blocks": [b.model_dump() for b in removed],
+        "added_blocks": [b.model_dump(mode="json") for b in added],
+        "removed_blocks": [b.model_dump(mode="json") for b in removed],
     }
 
 
@@ -53,7 +53,7 @@ def apply_replan(
     new_blocks: list[MicroBlock],
 ) -> Plan:
     """Apply replan: keep past/done blocks, replace future scheduled blocks."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Keep blocks that are done or in the past
     kept = [

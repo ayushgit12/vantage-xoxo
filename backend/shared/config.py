@@ -17,16 +17,18 @@ class Settings(BaseSettings):
     service_bus_queue_planner: str = "planner-jobs"
     service_bus_queue_executor: str = "executor-jobs"
 
-    # Azure OpenAI
-    azure_openai_endpoint: str = ""
-    azure_openai_api_key: str = ""
-    azure_openai_deployment: str = "gpt-4o-mini"
-    azure_openai_api_version: str = "2024-06-01"
+    # Gemini (free tier)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
+    # SentenceTransformers (local embeddings for retriever)
+    embedding_model: str = "all-MiniLM-L6-v2"
 
     # Microsoft Graph
     graph_client_id: str = ""
     graph_client_secret: str = ""
     graph_tenant_id: str = ""
+    graph_user_id: str = ""
     graph_redirect_uri: str = "http://localhost:8000/auth/callback"
 
     # App Insights

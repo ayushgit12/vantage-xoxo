@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 MIN_BLOCK_MINUTES = 30
 MAX_BLOCK_MINUTES = 120
 DEFAULT_BLOCK_MINUTES = 60
+MAX_DAILY_MINUTES = 120  # Cap: max 2h study per day to spread across the week
 
 
 def schedule_micro_blocks(
@@ -43,11 +44,10 @@ def schedule_micro_blocks(
         logger.warning("No available contiguous slots found!")
         return blocks
 
-    # Sort contiguous blocks: prefer preferred slots, then morning
+    # Sort contiguous blocks: spread across days, then prefer morning slots
     contiguous.sort(key=lambda slots: (
-        -sum(1 for s in slots if getattr(s, '_preferred', True)),  # preferred first
+        slots[0].date.toordinal(),  # earlier dates first (spread across days)
         slots[0].hour,  # earlier in day
-        slots[0].date.toordinal(),  # earlier dates
     ))
 
     # Build a queue of (topic_id, remaining_minutes) from macro allocations
@@ -60,6 +60,9 @@ def schedule_micro_blocks(
     # Map topic_id -> Topic for resource refs
     topic_map = {t.topic_id: t for t in knowledge.topics}
 
+    # Track minutes used per day to enforce daily cap
+    daily_used: dict[str, int] = {}  # date string -> minutes used
+
     slot_index = 0
 
     for topic_id, total_minutes in topic_queue:
@@ -69,11 +72,20 @@ def schedule_micro_blocks(
             available_block = contiguous[slot_index]
             available_minutes = len(available_block) * SLOT_MINUTES
 
+            # Check daily cap
+            day_key = str(available_block[0].date)
+            used_today = daily_used.get(day_key, 0)
+            if used_today >= MAX_DAILY_MINUTES:
+                slot_index += 1
+                continue
+
             # Determine block duration
+            daily_remaining = MAX_DAILY_MINUTES - used_today
             block_minutes = min(
                 remaining,
                 available_minutes,
                 MAX_BLOCK_MINUTES,
+                daily_remaining,
             )
             block_minutes = max(block_minutes, MIN_BLOCK_MINUTES)
             block_minutes = int(block_minutes)
@@ -101,6 +113,9 @@ def schedule_micro_blocks(
                 resources=resource_refs,
             )
             blocks.append(block)
+
+            # Track daily usage
+            daily_used[day_key] = daily_used.get(day_key, 0) + block_minutes
 
             # Mark used slots as unavailable
             for s in used_slots:

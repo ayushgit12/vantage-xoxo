@@ -1,15 +1,17 @@
-"""Topic and milestone extraction using Azure OpenAI.
+"""Topic and milestone extraction using Gemini + SentenceTransformers.
 
-This is the PRIMARY LLM use in the entire system.
-Results are cached by content hash to avoid duplicate calls.
+- SentenceTransformers: clusters chunks into semantic groups (topics)
+- Gemini free tier: generates structured topic/milestone descriptions
+Results are cached by content hash to avoid duplicate API calls.
 """
 
 import json
 import logging
-from openai import AsyncAzureOpenAI
+import google.generativeai as genai
 
 from shared.config import get_settings
 from shared.cache.cache import get_cached, set_cached
+from agents.retriever.embeddings import cluster_chunks, find_topic_labels
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ EXTRACTION_PROMPT = """You are an expert curriculum analyzer. Given the followin
 
 Goal: {goal_title} (Category: {goal_category})
 
-Respond with valid JSON only:
+Respond with valid JSON only (no markdown, no code blocks):
 {{
   "topics": [
     {{"title": "...", "description": "...", "prereq_titles": ["..."]}}
@@ -44,19 +46,40 @@ Material chunks:
 {chunks_text}
 """
 
+GOAL_ONLY_PROMPT = """You are an expert curriculum designer. A user wants to achieve the following goal but has not provided any study materials. Break this goal into a structured learning plan.
+
+Goal: {goal_title} (Category: {goal_category})
+
+Create 4-8 topics that cover the key areas needed to achieve this goal, ordered from foundational to advanced. Include milestones.
+
+Respond with valid JSON only (no markdown, no code blocks):
+{{
+  "topics": [
+    {{"title": "...", "description": "...", "prereq_titles": ["..."]}}
+  ],
+  "milestones": [
+    {{"title": "...", "description": "...", "topic_titles": ["..."]}}
+  ],
+  "confidence": 0.5
+}}
+"""
+
 
 async def extract_topics_and_milestones(
     chunks: list[str],
     goal_title: str,
     goal_category: str,
 ) -> dict:
-    """Use Azure OpenAI to extract topics and milestones from text chunks."""
+    """Extract topics and milestones using SentenceTransformers + Gemini."""
+
+    # Filter out empty/whitespace-only chunks
+    chunks = [c for c in chunks if c.strip()]
 
     # Build cache key from content
     cache_key = {
         "op": "extract_topics",
         "goal_title": goal_title,
-        "chunks_hash": hash(tuple(chunks)),
+        "chunks_hash": hash(tuple(chunks)) if chunks else hash(goal_title),
     }
 
     cached = await get_cached(cache_key)
@@ -66,51 +89,122 @@ async def extract_topics_and_milestones(
 
     settings = get_settings()
 
-    # If no OpenAI key, fall back to simple heuristic extraction
-    if not settings.azure_openai_api_key:
-        logger.warning("No Azure OpenAI key; using heuristic extraction")
-        return _heuristic_extraction(chunks, goal_title)
+    # If no material chunks, generate topics from goal title alone
+    has_material = bool(chunks)
 
-    client = AsyncAzureOpenAI(
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        api_version=settings.azure_openai_api_version,
+    if has_material:
+        # Step 1: Use SentenceTransformers to cluster chunks into topic groups
+        logger.info("Clustering %d chunks with SentenceTransformers", len(chunks))
+        clusters = cluster_chunks(chunks, threshold=0.65)
+        topic_hints = find_topic_labels(chunks, clusters)
+        logger.info("Found %d topic clusters via embeddings", len(clusters))
+    else:
+        logger.info("No materials provided; will generate topics from goal title")
+        clusters = []
+        topic_hints = []
+
+    # Step 2: If no Gemini key, use embedding-based heuristic extraction
+    if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
+        logger.warning("No Gemini API key; using SentenceTransformers-only extraction")
+        return _embedding_extraction(chunks, clusters, topic_hints, goal_title)
+
+    # Step 3: Use Gemini to generate structured extraction
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(settings.gemini_model)
+
+    if has_material:
+        chunks_text = "\n\n---CHUNK---\n\n".join(chunks[:10])
+        prompt = EXTRACTION_PROMPT.format(
+            goal_title=goal_title,
+            goal_category=goal_category,
+            chunks_text=chunks_text,
+        )
+    else:
+        prompt = GOAL_ONLY_PROMPT.format(
+            goal_title=goal_title,
+            goal_category=goal_category,
+        )
+
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.GenerationConfig(
+            temperature=0.0,
+            max_output_tokens=4000,
+            response_mime_type="application/json",
+        ),
     )
 
-    chunks_text = "\n\n---CHUNK---\n\n".join(chunks[:10])  # Limit to 10 chunks
+    result_text = response.text.strip()
+    # Strip markdown code blocks if present
+    if result_text.startswith("```"):
+        result_text = result_text.split("\n", 1)[1]
+        if result_text.endswith("```"):
+            result_text = result_text[:-3]
+        result_text = result_text.strip()
 
-    response = await client.chat.completions.create(
-        model=settings.azure_openai_deployment,
-        messages=[
-            {"role": "system", "content": "You extract structured learning data from text. Respond only with valid JSON."},
-            {"role": "user", "content": EXTRACTION_PROMPT.format(
-                goal_title=goal_title,
-                goal_category=goal_category,
-                chunks_text=chunks_text,
-            )},
-        ],
-        temperature=0.0,  # Deterministic
-        max_tokens=4000,
-        response_format={"type": "json_object"},
-    )
-
-    result_text = response.choices[0].message.content
-    result = json.loads(result_text)
+    try:
+        result = json.loads(result_text)
+    except json.JSONDecodeError:
+        # Try to fix common issues: trailing commas, single quotes
+        import re
+        fixed = re.sub(r",\s*([}\]])", r"\1", result_text)  # remove trailing commas
+        try:
+            result = json.loads(fixed)
+        except json.JSONDecodeError:
+            logger.warning("Gemini returned unparseable JSON; falling back to embeddings")
+            return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
 
     await set_cached(cache_key, result)
-    logger.info("Extracted %d topics for %s via LLM", len(result.get("topics", [])), goal_title)
+    logger.info("Extracted %d topics for %s via Gemini", len(result.get("topics", [])), goal_title)
     return result
 
 
+def _embedding_extraction(
+    chunks: list[str],
+    clusters: list[list[int]],
+    topic_hints: list[str],
+    goal_title: str,
+) -> dict:
+    """Fallback: build topics from SentenceTransformers clusters without LLM."""
+    topics = []
+    for i, (cluster, hint) in enumerate(zip(clusters, topic_hints)):
+        title = hint.lstrip("#").lstrip("0123456789.").strip()[:80]
+        if not title:
+            title = f"Topic {i + 1}"
+        topics.append({
+            "title": title,
+            "description": f"Covers {len(cluster)} section(s) of material",
+            "prereq_titles": [topics[i - 1]["title"]] if i > 0 else [],
+        })
+
+    if not topics:
+        topics.append({
+            "title": goal_title,
+            "description": "Complete goal material",
+            "prereq_titles": [],
+        })
+
+    return {
+        "topics": topics,
+        "milestones": [
+            {
+                "title": f"Complete {goal_title}",
+                "description": "Finish all topics",
+                "topic_titles": [t["title"] for t in topics],
+            }
+        ],
+        "confidence": 0.4,
+    }
+
+
 def _heuristic_extraction(chunks: list[str], goal_title: str) -> dict:
-    """Fallback: extract topics from headings and structure."""
+    """Legacy fallback: extract topics from headings and structure."""
     topics = []
     seen = set()
     combined = "\n".join(chunks)
 
     for line in combined.split("\n"):
         line = line.strip()
-        # Look for markdown headings or numbered items
         if line.startswith("#") or (len(line) > 3 and line[0].isdigit() and "." in line[:4]):
             title = line.lstrip("#").lstrip("0123456789.").strip()
             if title and title not in seen and len(title) < 100:
@@ -121,7 +215,6 @@ def _heuristic_extraction(chunks: list[str], goal_title: str) -> dict:
                     "prereq_titles": [],
                 })
 
-    # If no headings found, create a single topic from the goal
     if not topics:
         topics.append({
             "title": goal_title,
@@ -132,5 +225,5 @@ def _heuristic_extraction(chunks: list[str], goal_title: str) -> dict:
     return {
         "topics": topics,
         "milestones": [{"title": f"Complete {goal_title}", "description": "Finish all topics", "topic_titles": [t["title"] for t in topics]}],
-        "confidence": 0.3,  # Low confidence for heuristic
+        "confidence": 0.3,
     }

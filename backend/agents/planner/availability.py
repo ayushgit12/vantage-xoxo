@@ -6,7 +6,7 @@ Each slot is a (date, start_hour, end_hour) tuple.
 This is PURE PYTHON — no LLM.
 """
 
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, timedelta, date, time, timezone
 from typing import Any
 
 from shared.models.user import UserProfile
@@ -99,7 +99,7 @@ def build_availability_matrix(
     window_days: int = 7,
 ) -> AvailabilityMatrix:
     """Build the availability matrix for a user."""
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     matrix = AvailabilityMatrix(today, window_days)
 
     # Block sleep window

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
@@ -10,6 +10,7 @@ class ResourceRef(BaseModel):
     file_id: str | None = None
     source_type: str  # "pdf", "url", "youtube", "github", "web_supplement"
     description: str = ""
+    transcript: str = ""  # full transcript text for youtube videos
 
 
 class Topic(BaseModel):
@@ -37,5 +38,5 @@ class GoalKnowledge(BaseModel):
     estimated_total_hours: float = 0.0
     resource_refs: list[ResourceRef] = Field(default_factory=list)
     confidence_score: float = 0.0  # 0.0 to 1.0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

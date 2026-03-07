@@ -4,7 +4,7 @@ NO LLM — pure proportional allocation.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from shared.models import GoalKnowledge, MacroAllocation
 
@@ -21,8 +21,18 @@ def compute_macro_allocations(
     if isinstance(deadline, str):
         deadline = datetime.fromisoformat(deadline)
 
-    now = datetime.utcnow()
+    # Ensure deadline is timezone-aware
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
     total_hours = knowledge.estimated_total_hours
+
+    # If deadline is in the past, extend it to at least window_days from now
+    if deadline <= now:
+        logger.warning("Deadline %s is in the past; extending to %d days from now", deadline, window_days)
+        deadline = now + timedelta(days=window_days)
+
     days_remaining = max((deadline - now).days, 1)
     weeks_remaining = max(days_remaining / 7, 1)
 

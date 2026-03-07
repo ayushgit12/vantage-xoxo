@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from enum import StrEnum
 from pydantic import BaseModel, Field
 from uuid import uuid4
@@ -21,4 +21,4 @@ class TimeConstraint(BaseModel):
     recurring_start: time | None = None      # time of day for recurring
     recurring_end: time | None = None        # time of day for recurring
     recurring_days: list[int] = Field(default_factory=list)  # 0=Mon..6=Sun
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from pydantic import BaseModel, Field
 from uuid import uuid4
@@ -35,7 +35,7 @@ class Plan(BaseModel):
     plan_id: str = Field(default_factory=lambda: str(uuid4()))
     user_id: str
     goal_id: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     plan_window_days: int = 7
     seed: int = 42  # for deterministic scheduling
     macro_allocations: list[MacroAllocation] = Field(default_factory=list)
