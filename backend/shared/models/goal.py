@@ -3,6 +3,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
+from shared.models.user import TimeWindow
+
 
 class GoalCategory(str, Enum):
     COURSE = "course"
@@ -20,14 +22,23 @@ class GoalPriority(str, Enum):
     LOW = "low"
 
 
+class GoalType(str, Enum):
+    HABIT = "habit"
+    LEARNING = "learning"
+    PROJECT = "project"
+
+
 class Goal(BaseModel):
     goal_id: str = Field(default_factory=lambda: str(uuid4()))
     user_id: str
     title: str
+    description: str = ""
+    goal_type: GoalType = GoalType.LEARNING
     category: GoalCategory = GoalCategory.OTHER
     deadline: datetime
     priority: GoalPriority = GoalPriority.MEDIUM
     target_weekly_effort: float | None = None  # hours per week
+    preferred_schedule: TimeWindow | None = None
     prefer_user_materials_only: bool = False
     material_urls: list[str] = Field(default_factory=list)
     uploaded_file_ids: list[str] = Field(default_factory=list)
@@ -39,19 +50,25 @@ class Goal(BaseModel):
 
 class GoalCreate(BaseModel):
     title: str
+    description: str = ""
+    goal_type: GoalType = GoalType.LEARNING
     category: GoalCategory = GoalCategory.OTHER
     deadline: datetime
     priority: GoalPriority = GoalPriority.MEDIUM
     target_weekly_effort: float | None = None
+    preferred_schedule: TimeWindow | None = None
     prefer_user_materials_only: bool = False
     material_urls: list[str] = Field(default_factory=list)
 
 
 class GoalUpdate(BaseModel):
     title: str | None = None
+    description: str | None = None
+    goal_type: GoalType | None = None
     category: GoalCategory | None = None
     deadline: datetime | None = None
     priority: GoalPriority | None = None
     target_weekly_effort: float | None = None
+    preferred_schedule: TimeWindow | None = None
     prefer_user_materials_only: bool | None = None
     material_urls: list[str] | None = None

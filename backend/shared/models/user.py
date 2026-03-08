@@ -6,6 +6,7 @@ class TimeWindow(BaseModel):
     start_hour: int  # 0-23
     end_hour: int    # 0-23
     days: list[int] = Field(default_factory=lambda: list(range(7)))  # 0=Mon..6=Sun
+    duration_min: int | None = None
 
 
 class UserProfile(BaseModel):

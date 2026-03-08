@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   getGoal,
@@ -24,7 +24,6 @@ import {
 export default function UnifiedGoalDashboard() {
   const params = useParams();
   const goalId = params.id as string;
-  const router = useRouter();
 
   const [goal, setGoal] = useState<Goal | null>(null);
   const [knowledge, setKnowledge] = useState<GoalKnowledge | null>(null);
@@ -33,6 +32,8 @@ export default function UnifiedGoalDashboard() {
   const [actionLoading, setActionLoading] = useState("");
   
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const isHabitGoal = goal?.goal_type === "habit";
 
   useEffect(() => {
     loadData();
@@ -123,6 +124,23 @@ export default function UnifiedGoalDashboard() {
     };
   }
 
+  function formatScheduleSummary() {
+    if (!goal?.preferred_schedule) {
+      return "Daily at 07:00 for 30 min";
+    }
+
+    const schedule = goal.preferred_schedule;
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const days = schedule.days.length === 7
+      ? "Every day"
+      : schedule.days.map((d) => dayNames[d] || d).join(", ");
+
+    const start = `${String(schedule.start_hour).padStart(2, "0")}:00`;
+    const duration = schedule.duration_min || ((schedule.end_hour - schedule.start_hour) * 60) || 30;
+
+    return `${days} at ${start} for ${duration} min`;
+  }
+
   if (loading) return <div className="p-8 text-center text-gray-500">Loading dashboard...</div>;
   if (!goal) return <div className="p-8 text-center text-red-500">Goal not found</div>;
 
@@ -162,7 +180,26 @@ export default function UnifiedGoalDashboard() {
           <button className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">
             Edit Goal
           </button>
-          {!knowledge ? (
+          {isHabitGoal ? (
+            !plan ? (
+              <button 
+                onClick={async () => { setActionLoading("plan"); await generatePlan(goalId); await loadData(); setActionLoading(""); }}
+                disabled={!!actionLoading}
+                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+              >
+                Generate Routine
+              </button>
+            ) : (
+              <button 
+                onClick={async () => { setActionLoading("sync"); await syncCalendar(plan.plan_id); setActionLoading(""); }}
+                disabled={!!actionLoading}
+                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+              >
+                <Calendar className="w-4 h-4 mr-2" />
+                Sync to Calendar
+              </button>
+            )
+          ) : !knowledge ? (
             <button 
               onClick={async () => { setActionLoading("ingest"); await triggerIngest(goalId); await loadData(); setActionLoading(""); }}
               disabled={!!actionLoading}
@@ -196,53 +233,78 @@ export default function UnifiedGoalDashboard() {
         
         {/* Left Sidebar: Retriever & Sources */}
         <div className="md:col-span-3 space-y-10">
-          
-          {/* Topics List */}
-          {knowledge && (
+          {isHabitGoal ? (
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Retriever</h3>
-              <ul className="space-y-4">
-                {knowledge.topics.map(t => (
-                  <li key={t.topic_id} className="flex justify-between items-center border-b border-slate-200 border-dotted pb-2">
-                    <span className="text-sm font-medium text-slate-700 truncate pr-4" title={t.title}>{t.title}</span>
-                    <span className="text-xs text-slate-400 font-mono">{t.est_hours}h</span>
-                  </li>
-                ))}
-              </ul>
+              <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Routine</h3>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Schedule</p>
+                  <p className="text-sm text-slate-700">{formatScheduleSummary()}</p>
+                </div>
+                {goal.target_weekly_effort ? (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Weekly Effort</p>
+                    <p className="text-sm text-slate-700">{goal.target_weekly_effort} hrs / week</p>
+                  </div>
+                ) : null}
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Tracking</p>
+                  <p className="text-sm text-slate-700">This habit skips material parsing and goes straight to routine scheduling.</p>
+                </div>
+              </div>
             </div>
+          ) : (
+            <>
+              {/* Topics List */}
+              {knowledge && (
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Retriever</h3>
+                  <ul className="space-y-4">
+                    {knowledge.topics.map(t => (
+                      <li key={t.topic_id} className="flex justify-between items-center border-b border-slate-200 border-dotted pb-2">
+                        <span className="text-sm font-medium text-slate-700 truncate pr-4" title={t.title}>{t.title}</span>
+                        <span className="text-xs text-slate-400 font-mono">{t.est_hours}h</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
 
           {/* Sources */}
-          <div>
-            <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Sources</h3>
-            <div className="space-y-3">
-              {goal.uploaded_file_ids.map((file, i) => (
-                <div key={i} className="flex items-center p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
-                  <div className="w-8 h-8 rounded bg-red-50 text-red-500 flex items-center justify-center mr-3 shrink-0">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{file.split('/').pop()}</p>
-                    <p className="text-[10px] text-slate-400">Uploaded PDF</p>
-                  </div>
-                </div>
-              ))}
-              {goal.material_urls.map((url, i) => {
-                const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
-                return (
+          {!isHabitGoal && (goal.uploaded_file_ids.length > 0 || goal.material_urls.length > 0) ? (
+            <div>
+              <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Sources</h3>
+              <div className="space-y-3">
+                {goal.uploaded_file_ids.map((file, i) => (
                   <div key={i} className="flex items-center p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
-                    <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${isYoutube ? 'bg-blue-50 text-blue-500' : 'bg-slate-100 text-slate-500'}`}>
-                      {isYoutube ? <Video className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                    <div className="w-8 h-8 rounded bg-red-50 text-red-500 flex items-center justify-center mr-3 shrink-0">
+                      <FileText className="w-4 h-4" />
                     </div>
                     <div className="overflow-hidden">
-                      <p className="text-xs font-semibold text-slate-700 truncate">{new URL(url).hostname}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{url}</p>
+                      <p className="text-xs font-semibold text-slate-700 truncate">{file.split('/').pop()}</p>
+                      <p className="text-[10px] text-slate-400">Uploaded PDF</p>
                     </div>
                   </div>
-                );
-              })}
+                ))}
+                {goal.material_urls.map((url, i) => {
+                  const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
+                  return (
+                    <div key={i} className="flex items-center p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
+                      <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${isYoutube ? 'bg-blue-50 text-blue-500' : 'bg-slate-100 text-slate-500'}`}>
+                        {isYoutube ? <Video className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-semibold text-slate-700 truncate">{new URL(url).hostname}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{url}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         {/* Right Main Area: Timeline */}
@@ -347,7 +409,7 @@ export default function UnifiedGoalDashboard() {
             </div>
           ) : (
             <div className="h-64 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400">
-              Generate a plan to see your timeline
+              {isHabitGoal ? "Generate a routine to see your schedule" : "Generate a plan to see your timeline"}
             </div>
           )}
 

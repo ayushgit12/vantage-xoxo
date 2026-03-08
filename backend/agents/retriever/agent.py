@@ -1,8 +1,7 @@
 """Retriever Agent — orchestrates parsing, extraction, estimation, and knowledge building.
 
 Uses Semantic Kernel for agent orchestration.
-LLM is used ONLY for topic/milestone extraction from text chunks.
-Hour estimation is rule-based.
+LLM is used for topic/milestone extraction and structured topic time estimation.
 """
 
 import logging
@@ -21,6 +20,7 @@ from agents.retriever.extractor import extract_topics_and_milestones
 from agents.retriever.estimator import estimate_hours
 from agents.retriever.web_supplement import supplement_if_needed
 from agents.retriever.knowledge_builder import build_knowledge
+from shared.models.goal import GoalType
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("retriever")
@@ -36,6 +36,9 @@ async def run_retriever(goal_id: str, user_id: str) -> GoalKnowledge:
         goal_doc = await goals_repo.find_by_id(goal_id)
         if not goal_doc:
             raise ValueError(f"Goal {goal_id} not found")
+
+        if goal_doc.get("goal_type") == GoalType.HABIT:
+            raise ValueError("Retriever is not applicable to habit goals")
 
         # 2. Parse all materials (files + URLs)
         raw_texts, resource_refs = await parse_all_materials(
@@ -53,8 +56,8 @@ async def run_retriever(goal_id: str, user_id: str) -> GoalKnowledge:
             goal_category=goal_doc.get("category", "other"),
         )
 
-        # 5. Estimate hours per topic (rule-based)
-        topics_with_hours = estimate_hours(extracted["topics"], raw_texts)
+        # 5. Estimate hours per topic via structured Gemini output
+        topics_with_hours = await estimate_hours(extracted["topics"], raw_texts)
 
         # 6. Supplement with web resources if needed
         settings = get_settings()

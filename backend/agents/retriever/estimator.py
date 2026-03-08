@@ -1,60 +1,280 @@
-"""Rule-based hour estimation for topics.
+"""Structured topic time estimation using Gemini plus code-side validation.
 
-NO LLM here — pure heuristics based on content volume.
+The model decides scope/difficulty/type/hours for each topic.
+Python validates shape, enforces sane ranges, and normalizes obvious inconsistencies.
+There is no heuristic fallback path in this estimator.
 """
 
+import json
 import logging
 import re
+from typing import Any
+
+import google.generativeai as genai
+
+from shared.cache.cache import get_cached, set_cached
+from shared.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Heuristic constants
-CHARS_PER_HOUR_READING = 30_000   # ~10 pages of text per hour
-VIDEO_MINUTES_PER_HOUR = 45       # watching + pausing + notes
-EXERCISE_MULTIPLIER = 1.5         # practice takes 1.5x reading time
 MIN_HOURS_PER_TOPIC = 0.5
-MAX_HOURS_PER_TOPIC = 20.0
+MAX_HOURS_PER_TOPIC = 40.0
+TOPIC_TYPE_FLOORS = {
+    "concept": 1.0,
+    "practice": 1.5,
+    "project": 3.0,
+}
+SCOPE_FLOORS = {
+    "narrow": 0.5,
+    "medium": 1.5,
+    "broad": 4.0,
+}
+DIFFICULTY_FLOORS = {
+    "beginner": 0.5,
+    "intermediate": 1.5,
+    "advanced": 3.0,
+}
+
+ESTIMATION_PROMPT = """You are an expert learning architect.
+
+Given a set of extracted learning topics and a short summary of the source material, estimate realistic study effort per topic.
+
+Requirements:
+- Return one estimate entry for every input topic title.
+- Consider topic breadth, conceptual difficulty, prerequisite depth, and project/practice load.
+- If material coverage for a topic is thin but the topic itself is broad, DO NOT underestimate it.
+- Use these enums only:
+  - difficulty: "beginner" | "intermediate" | "advanced"
+  - scope: "narrow" | "medium" | "broad"
+  - topic_type: "concept" | "practice" | "project"
+- estimated_hours must be realistic study time in hours.
+- min_hours <= estimated_hours <= max_hours.
+- confidence must be between 0.0 and 1.0.
+
+Return strict JSON only:
+{{
+    "topics": [
+        {{
+            "title": "...",
+            "estimated_hours": 8.0,
+            "min_hours": 5.0,
+            "max_hours": 12.0,
+            "difficulty": "intermediate",
+            "scope": "broad",
+            "topic_type": "concept",
+            "confidence": 0.72,
+            "reasoning": "short explanation"
+        }}
+    ]
+}}
+
+Source material summary:
+- total_characters: {total_chars}
+- approx_pages: {approx_pages}
+- approx_video_mentions: {video_mentions}
+- sample_excerpt: {sample_excerpt}
+
+Topics to estimate:
+{topics_json}
+"""
 
 
-def estimate_hours(
+def _normalize_enum(value: Any, allowed: set[str], field_name: str) -> str:
+    candidate = str(value).strip().lower()
+    if candidate not in allowed:
+        raise ValueError(f"Estimator field '{field_name}' must be one of {sorted(allowed)}")
+    return candidate
+
+
+def _normalize_hours(value: Any, field_name: str) -> float:
+    try:
+        hours = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Estimator field '{field_name}' must be numeric") from exc
+    return round(max(MIN_HOURS_PER_TOPIC, min(hours, MAX_HOURS_PER_TOPIC)), 1)
+
+
+def _normalize_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Estimator field 'confidence' must be numeric") from exc
+    return round(max(0.0, min(confidence, 1.0)), 2)
+
+
+def _material_summary(raw_texts: list[str]) -> dict[str, Any]:
+    combined = "\n".join(raw_texts)
+    total_chars = len(combined)
+    approx_pages = max(total_chars // 3000, 1) if total_chars else 0
+    video_mentions = len(re.findall(r"youtube|video|watch|lecture|recording", combined.lower()))
+    sample_excerpt = combined[:1200].replace("\n", " ").strip()
+    return {
+        "total_chars": total_chars,
+        "approx_pages": approx_pages,
+        "video_mentions": video_mentions,
+        "sample_excerpt": sample_excerpt or "No source text provided",
+    }
+
+
+def _guardrailed_hours(topic_estimate: dict[str, Any]) -> tuple[float, float, float]:
+    estimated = _normalize_hours(topic_estimate.get("estimated_hours"), "estimated_hours")
+    min_hours = _normalize_hours(topic_estimate.get("min_hours"), "min_hours")
+    max_hours = _normalize_hours(topic_estimate.get("max_hours"), "max_hours")
+
+    difficulty = _normalize_enum(
+        topic_estimate.get("difficulty"),
+        {"beginner", "intermediate", "advanced"},
+        "difficulty",
+    )
+    scope = _normalize_enum(
+        topic_estimate.get("scope"),
+        {"narrow", "medium", "broad"},
+        "scope",
+    )
+    topic_type = _normalize_enum(
+        topic_estimate.get("topic_type"),
+        {"concept", "practice", "project"},
+        "topic_type",
+    )
+
+    floor = max(
+        TOPIC_TYPE_FLOORS[topic_type],
+        SCOPE_FLOORS[scope],
+        DIFFICULTY_FLOORS[difficulty],
+    )
+
+    estimated = max(estimated, floor)
+    min_hours = max(min_hours, min(floor, estimated))
+    max_hours = max(max_hours, estimated)
+
+    if min_hours > estimated:
+        min_hours = estimated
+    if estimated > max_hours:
+        max_hours = estimated
+
+    return round(min_hours, 1), round(estimated, 1), round(max_hours, 1)
+
+
+async def estimate_hours(
     topics: list[dict],
     raw_texts: list[str],
 ) -> list[dict]:
-    """Add est_hours to each topic based on content heuristics."""
-    total_chars = sum(len(t) for t in raw_texts)
-    total_reading_hours = max(total_chars / CHARS_PER_HOUR_READING, 1.0)
+    """Estimate hours for topics via Gemini structured output with strict validation."""
+    if not topics:
+        return topics
 
-    num_topics = max(len(topics), 1)
+    settings = get_settings()
+    if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
+        raise ValueError("Gemini API key not configured for topic estimation")
 
-    # Count video references in text
-    combined = "\n".join(raw_texts).lower()
-    video_mentions = len(re.findall(r"youtube|video|watch|lecture|recording", combined))
-    video_hours = video_mentions * 0.5  # ~30 min per video reference
+    summary = _material_summary(raw_texts)
+    prompt_topics = [
+        {
+            "title": topic.get("title", ""),
+            "description": topic.get("description", ""),
+            "prereq_titles": topic.get("prereq_titles", []),
+        }
+        for topic in topics
+    ]
+    cache_key = {
+        "op": "estimate_topic_hours",
+        "topics": prompt_topics,
+        "summary": {
+            "total_chars": summary["total_chars"],
+            "approx_pages": summary["approx_pages"],
+            "video_mentions": summary["video_mentions"],
+        },
+    }
 
-    # Base hours per topic: distribute total reading + video time
-    base_per_topic = (total_reading_hours + video_hours) / num_topics
+    cached = await get_cached(cache_key)
+    if cached:
+        logger.info("Using cached structured hour estimates for %d topics", len(topics))
+        result = cached
+    else:
+        genai.configure(api_key=settings.gemini_api_key)
+        model = genai.GenerativeModel(settings.gemini_model)
+        prompt = ESTIMATION_PROMPT.format(
+            total_chars=summary["total_chars"],
+            approx_pages=summary["approx_pages"],
+            video_mentions=summary["video_mentions"],
+            sample_excerpt=json.dumps(summary["sample_excerpt"]),
+            topics_json=json.dumps(prompt_topics, ensure_ascii=True),
+        )
 
+        logger.info("[ESTIMATOR] Requesting structured estimates for %d topics", len(topics))
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.0,
+                    max_output_tokens=12000,
+                    response_mime_type="application/json",
+                ),
+            )
+        except Exception as exc:
+            logger.error("[ESTIMATOR] Gemini estimation call failed: %s", exc, exc_info=True)
+            raise ValueError("Topic estimation model call failed") from exc
+
+        result_text = response.text.strip()
+        result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
+        result_text = re.sub(r"\n?```\s*$", "", result_text)
+        result_text = result_text.strip()
+
+        logger.info("[ESTIMATOR] Raw model response: %s", result_text[:500])
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError as exc:
+            logger.error("[ESTIMATOR] Invalid JSON from estimator model: %s", result_text[:800])
+            raise ValueError(f"Estimator returned invalid JSON: {exc}") from exc
+
+        await set_cached(cache_key, result)
+
+    model_topics = result.get("topics")
+    if not isinstance(model_topics, list):
+        raise ValueError("Estimator response missing 'topics' list")
+
+    model_by_title: dict[str, dict[str, Any]] = {}
+    for item in model_topics:
+        if not isinstance(item, dict):
+            raise ValueError("Estimator topic entries must be objects")
+        title = str(item.get("title", "")).strip()
+        if not title:
+            raise ValueError("Estimator topic entry missing title")
+        model_by_title[title] = item
+
+    enriched_topics: list[dict] = []
+    missing_titles: list[str] = []
     for topic in topics:
-        # Start with base allocation
-        hours = base_per_topic
+        title = str(topic.get("title", "")).strip()
+        model_topic = model_by_title.get(title)
+        if model_topic is None:
+            missing_titles.append(title)
+            continue
 
-        title_lower = topic.get("title", "").lower()
+        min_hours, est_hours, max_hours = _guardrailed_hours(model_topic)
+        difficulty = _normalize_enum(model_topic.get("difficulty"), {"beginner", "intermediate", "advanced"}, "difficulty")
+        scope = _normalize_enum(model_topic.get("scope"), {"narrow", "medium", "broad"}, "scope")
+        topic_type = _normalize_enum(model_topic.get("topic_type"), {"concept", "practice", "project"}, "topic_type")
+        confidence = _normalize_confidence(model_topic.get("confidence"))
 
-        # Adjust for topic complexity keywords
-        if any(kw in title_lower for kw in ["project", "build", "implement", "lab", "exercise"]):
-            hours *= EXERCISE_MULTIPLIER
-        elif any(kw in title_lower for kw in ["intro", "overview", "review", "summary"]):
-            hours *= 0.6
-        elif any(kw in title_lower for kw in ["advanced", "deep dive", "optimization"]):
-            hours *= 1.3
+        enriched_topics.append({
+            **topic,
+            "est_hours": est_hours,
+            "est_hours_min": min_hours,
+            "est_hours_max": max_hours,
+            "difficulty": difficulty,
+            "scope": scope,
+            "topic_type": topic_type,
+            "estimation_confidence": confidence,
+            "estimation_reasoning": str(model_topic.get("reasoning", "")).strip(),
+        })
 
-        # Clamp
-        hours = max(MIN_HOURS_PER_TOPIC, min(hours, MAX_HOURS_PER_TOPIC))
-        topic["est_hours"] = round(hours, 1)
+    if missing_titles:
+        raise ValueError(f"Estimator response missing topics: {missing_titles}")
 
     logger.info(
-        "Estimated hours for %d topics: %.1fh total",
-        len(topics),
-        sum(t.get("est_hours", 0) for t in topics),
+        "Estimated hours for %d topics via structured Gemini output: %.1fh total",
+        len(enriched_topics),
+        sum(t.get("est_hours", 0.0) for t in enriched_topics),
     )
-    return topics
+    return enriched_topics

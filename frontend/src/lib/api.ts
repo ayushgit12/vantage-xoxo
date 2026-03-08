@@ -20,6 +20,18 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 export const createGoal = (body: GoalCreate) =>
   apiFetch<Goal>("/api/goals", { method: "POST", body: JSON.stringify(body) });
 
+export const previewGoalFromScenario = (body: ScenarioGoalRequest) =>
+  apiFetch<ScenarioGoalPreview>("/api/goals/intake", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const createGoalFromScenario = (body: ScenarioGoalRequest) =>
+  apiFetch<Goal>("/api/goals/from-scenario", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const listGoals = () => apiFetch<Goal[]>("/api/goals");
 
 export const getGoal = (id: string) => apiFetch<Goal>(`/api/goals/${id}`);
@@ -69,6 +81,8 @@ export interface Goal {
   goal_id: string;
   user_id: string;
   title: string;
+  description?: string;
+  goal_type?: "habit" | "learning" | "project";
   category: string;
   deadline: string;
   priority: string;
@@ -116,4 +130,33 @@ export interface Plan {
   plan_window_days: number;
   micro_blocks: MicroBlock[];
   explanation: string;
+}
+
+export interface ScenarioGoalRequest {
+  scenario_text: string;
+  overrides?: {
+    title?: string;
+    description?: string;
+    category?: string;
+    priority?: string;
+    deadline?: string;
+    target_weekly_effort?: number;
+    prefer_user_materials_only?: boolean;
+    material_urls?: string[];
+    preferred_schedule?: {
+      start_hour: number;
+      end_hour: number;
+      days: number[];
+      duration_min?: number;
+    };
+  };
+}
+
+export interface ScenarioGoalPreview {
+  scenario_text: string;
+  inferred_goal_type: "habit" | "learning" | "project";
+  confidence: number;
+  assumptions: string[];
+  warnings: string[];
+  goal_preview: GoalCreate;
 }

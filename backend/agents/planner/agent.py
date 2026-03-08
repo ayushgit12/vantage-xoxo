@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from shared.config import get_settings
 from shared.models import Plan, GoalKnowledge, AgentLog
+from shared.models.goal import GoalType
 from shared.models.user import UserProfile
 from shared.db.repositories import (
     goals_repo, knowledge_repo, plans_repo, users_repo,
@@ -25,6 +26,7 @@ from shared.telemetry.tracing import get_tracer
 from agents.planner.availability import build_availability_matrix
 from agents.planner.macro_allocator import compute_macro_allocations
 from agents.planner.micro_scheduler import schedule_micro_blocks
+from agents.planner.habit_scheduler import schedule_habit_blocks
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("planner")
@@ -42,6 +44,13 @@ async def run_planner(
 ) -> Plan:
     """Plan a single goal, then global-replan all goals to avoid overlaps."""
 
+    goal_doc = await goals_repo.find_by_id(goal_id)
+    if not goal_doc:
+        raise ValueError(f"Goal {goal_id} not found")
+
+    if goal_doc.get("goal_type") == GoalType.HABIT:
+        return await _plan_single_habit_goal(goal_doc, user_id, window_days)
+
     # First ensure this goal has knowledge
     knowledge_doc = await knowledge_repo.find_by_id(goal_id, id_field="goal_id")
     if not knowledge_doc:
@@ -56,6 +65,34 @@ async def run_planner(
             return p
 
     raise ValueError(f"Plan for goal {goal_id} was not generated")
+
+
+async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int) -> Plan:
+    """Create recurring blocks for habit goals without retriever/macro allocation."""
+    from shared.models.goal import Goal
+
+    goal = Goal(**goal_doc)
+    blocks = schedule_habit_blocks(goal=goal, window_days=max(window_days, 14))
+
+    plan = Plan(
+        user_id=user_id,
+        goal_id=goal.goal_id,
+        plan_window_days=max(window_days, 14),
+        seed=DEFAULT_SEED,
+        macro_allocations=[],
+        micro_blocks=[],
+        explanation="Recurring habit schedule generated from inferred preferred schedule",
+    )
+
+    # Assign plan_id to all blocks now that we have it
+    for block in blocks:
+        block.plan_id = plan.plan_id
+    plan.micro_blocks = blocks
+
+    await plans_repo.upsert(plan.plan_id, plan.model_dump(mode="json"), id_field="plan_id")
+    await goals_repo.update(goal.goal_id, {"active_plan_id": plan.plan_id})
+    logger.info("Habit plan generated for %s with %d blocks", goal.goal_id, len(blocks))
+    return plan
 
 
 async def replan_all_goals(

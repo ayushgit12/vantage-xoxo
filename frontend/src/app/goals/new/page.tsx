@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createGoal } from "@/lib/api";
+import { createGoalFromScenario } from "@/lib/api";
 
-const CATEGORIES = ["course", "project", "skill", "hobby", "fitness", "internship", "other"];
 const PRIORITIES = ["high", "medium", "low"];
 
 export default function NewGoalPage() {
@@ -19,20 +18,31 @@ export default function NewGoalPage() {
 
     const form = new FormData(e.currentTarget);
 
+    const scenario = (form.get("scenario") as string).trim();
+    const manualDeadline = form.get("deadline") as string;
+    const materialUrls = (form.get("urls") as string)
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    // Build overrides — only include deadline if user actually picked one
+    const overrides: Record<string, unknown> = {
+      priority: form.get("priority") as string,
+      prefer_user_materials_only: form.get("user_materials_only") === "on",
+      material_urls: materialUrls,
+    };
+    if (manualDeadline) {
+      overrides.deadline = new Date(manualDeadline).toISOString();
+    }
+    const weeklyHours = form.get("weekly_hours");
+    if (weeklyHours) {
+      overrides.target_weekly_effort = Number(weeklyHours);
+    }
+
     try {
-      const goal = await createGoal({
-        title: form.get("title") as string,
-        category: form.get("category") as string,
-        deadline: new Date(form.get("deadline") as string).toISOString(),
-        priority: form.get("priority") as string,
-        target_weekly_effort: form.get("weekly_hours")
-          ? Number(form.get("weekly_hours"))
-          : undefined,
-        prefer_user_materials_only: form.get("user_materials_only") === "on",
-        material_urls: (form.get("urls") as string)
-          .split("\n")
-          .map((u) => u.trim())
-          .filter(Boolean),
+      const goal = await createGoalFromScenario({
+        scenario_text: scenario,
+        overrides,
       });
       router.push(`/goals/${goal.goal_id}`);
     } catch (err: any) {
@@ -44,29 +54,25 @@ export default function NewGoalPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Create New Goal</h1>
+      <h1 className="text-2xl font-bold mb-6">Describe Your Goal Scenario</h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium mb-1">Title</label>
-          <input
-            name="title"
+          <label className="block text-sm font-medium mb-1">Scenario</label>
+          <textarea
+            name="scenario"
             required
+            rows={4}
             className="w-full border rounded-lg px-3 py-2"
-            placeholder="e.g., Learn Machine Learning"
+            placeholder="e.g., I want to do 20 pushups daily before breakfast and stay consistent for 3 months."
           />
+          <p className="text-xs text-gray-500 mt-1">
+            The model auto-detects goal type and creates structured data.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Category</label>
-            <select name="category" className="w-full border rounded-lg px-3 py-2">
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
+          <div className="col-span-2">
             <label className="block text-sm font-medium mb-1">Priority</label>
             <select name="priority" className="w-full border rounded-lg px-3 py-2">
               {PRIORITIES.map((p) => (
@@ -78,8 +84,8 @@ export default function NewGoalPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Deadline</label>
-            <input name="deadline" type="date" required className="w-full border rounded-lg px-3 py-2" />
+            <label className="block text-sm font-medium mb-1">Deadline (optional for habits)</label>
+            <input name="deadline" type="date" className="w-full border rounded-lg px-3 py-2" />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Weekly Hours (optional)</label>
@@ -111,7 +117,7 @@ export default function NewGoalPage() {
           disabled={loading}
           className="w-full bg-brand-600 text-white py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
         >
-          {loading ? "Creating..." : "Create Goal"}
+          {loading ? "Creating..." : "Create Goal From Scenario"}
         </button>
       </form>
     </div>

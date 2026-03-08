@@ -7,6 +7,7 @@ from api.dependencies import get_current_user_id
 from shared.models import GoalKnowledge
 from shared.db.repositories import goals_repo, knowledge_repo
 from agents.retriever.agent import run_retriever
+from shared.models.goal import GoalType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,6 +22,8 @@ async def trigger_ingest(
     doc = await goals_repo.find_by_id(goal_id)
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
+    if doc.get("goal_type") == GoalType.HABIT:
+        raise HTTPException(status_code=400, detail="Retriever is not applicable to habit goals")
 
     try:
         knowledge = await run_retriever(goal_id, user_id)
