@@ -279,7 +279,7 @@ export default function UnifiedGoalDashboard() {
               </div>
 
               {/* Timeline Container */}
-              <div className="px-6 py-4 space-y-6">
+              <div className="px-6 py-4 space-y-6 max-h-[500px] overflow-y-auto">
                 {(selectedDate && blocksByDate[selectedDate] ? blocksByDate[selectedDate] : []).map(block => {
                   const topic = knowledge?.topics.find(t => t.topic_id === block.topic_id);
                   const isDone = block.status === "done";
