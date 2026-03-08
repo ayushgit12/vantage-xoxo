@@ -16,12 +16,16 @@ class MicroBlock(BaseModel):
     block_id: str = Field(default_factory=lambda: str(uuid4()))
     plan_id: str
     goal_id: str
+    # For learning goals: a real Topic.topic_id from GoalKnowledge.
+    # For habit goals: the goal_id is used as a sentinel (no extracted topics).
     topic_id: str
     start_dt: datetime
     duration_min: int
     resources: list[str] = Field(default_factory=list)  # resource ref_ids
     status: BlockStatus = BlockStatus.SCHEDULED
     external_event_id: str | None = None  # calendar event id
+    # Human-readable label — populated by habit scheduler; falls back to topic title for learning goals.
+    notes: str = ""
 
 
 class MacroAllocation(BaseModel):
@@ -42,3 +46,7 @@ class Plan(BaseModel):
     micro_blocks: list[MicroBlock] = Field(default_factory=list)
     explanation: str = ""
     version: int = 1
+    # Copied from GoalKnowledge at plan-creation time so clients can compute
+    # meaningful progress without a separate knowledge fetch.
+    # Progress = sum(done_block.duration_min) / (total_estimated_hours * 60)
+    total_estimated_hours: float = 0.0

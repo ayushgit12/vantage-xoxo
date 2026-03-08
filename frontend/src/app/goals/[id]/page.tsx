@@ -9,17 +9,20 @@ import {
   getGoal,
   getKnowledge,
   getPlanForGoal,
+  replanAllPlans,
   updateBlockStatus,
   syncCalendar,
   triggerIngest,
   generatePlan,
   updateKnowledgeTopic,
+  updateGoal,
   type Goal,
   type GoalKnowledge,
   type Plan,
   type MicroBlock,
   type Topic,
 } from "@/lib/api";
+import { computeBlockProgress, computeTopicProgress, getDefaultSelectedDate, getSortedDates, groupBlocksByDate, parseDateKey } from "@/lib/schedule";
 import { 
   Calendar, CheckCircle2, ChevronLeft, ChevronRight, 
   Clock, FileText, Pencil, Plus, Video, AlertTriangle, XCircle, Trash2, Save
@@ -51,23 +54,31 @@ export default function UnifiedGoalDashboard() {
   const isHabitGoal = goal?.goal_type === "habit";
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [goalId]);
+
+  async function runAction(actionId: string, action: () => Promise<void>) {
+    setActionLoading(actionId);
+    try {
+      await action();
+    } finally {
+      setActionLoading("");
+    }
+  }
 
   async function loadData() {
     try {
+      setLoading(true);
       const g = await getGoal(goalId);
       setGoal(g);
-      
-      if (g.knowledge_id) {
-        const k = await getKnowledge(goalId);
-        setKnowledge(k);
-      }
-      
-      if (g.active_plan_id) {
-        const p = await getPlanForGoal(goalId);
-        setPlan(p);
-      }
+
+      const [nextKnowledge, nextPlan] = await Promise.all([
+        g.knowledge_id ? getKnowledge(goalId).catch(() => null) : Promise.resolve(null),
+        g.active_plan_id ? getPlanForGoal(goalId).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      setKnowledge(nextKnowledge);
+      setPlan(nextPlan);
     } catch (e) {
       console.error(e);
     } finally {
@@ -163,42 +174,46 @@ export default function UnifiedGoalDashboard() {
   const daysLeft = goal ? Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
   
   // Group plan blocks by date
-  const blocksByDate = plan?.micro_blocks.reduce((acc, block) => {
-    // using local date string for simplicity
-    const dateStr = new Date(block.start_dt).toISOString().split('T')[0];
-    if (!acc[dateStr]) acc[dateStr] = [];
-    acc[dateStr].push(block);
-    return acc;
-  }, {} as Record<string, MicroBlock[]>) || {};
-
-  const availableDates = Object.keys(blocksByDate).sort();
+  const blocksByDate = groupBlocksByDate(plan?.micro_blocks || []);
+  const availableDates = getSortedDates(blocksByDate);
   
   // Set default selected date if none chosen
   useEffect(() => {
-    if (!selectedDate && availableDates.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
-      if (availableDates.includes(today)) {
-        setSelectedDate(today);
-      } else {
-        setSelectedDate(availableDates[0]);
+    setSelectedDate((current) => {
+      if (current && availableDates.includes(current)) {
+        return current;
       }
-    }
+      return getDefaultSelectedDate(availableDates);
+    });
   }, [availableDates, selectedDate]);
 
   // Check for drift (any missed blocks)
   const hasDrift = plan?.micro_blocks.some(b => b.status === "missed");
 
+  // Effort-weighted progress: a 2-hour block counts more than a 30-min block.
+  // Partial blocks earn half credit so the bar never jumps backwards on replan.
+  // Use plan.total_estimated_hours (full goal scope) as the denominator, NOT
+  // the sum of this window's blocks — otherwise 7/7 window blocks = 100% even
+  // when 143 hours of a 150-hour goal still remain.
+  const totalEstimatedMinutes = (plan?.total_estimated_hours ?? 0) * 60;
+  const blockProgress = computeBlockProgress(plan?.micro_blocks ?? [], totalEstimatedMinutes || undefined);
+  const { doneMinutes, partialMinutes, totalMinutes, progressPct: progressPercent } = blockProgress;
+
+  // Topic-level completion: a topic is "done" only when ALL its blocks are done.
+  const topicIds = knowledge?.topics.map((t) => t.topic_id) ?? [];
+  const topicProgress = computeTopicProgress(plan?.micro_blocks ?? [], topicIds);
+  const { completedTopicIds, partialTopicIds } = topicProgress;
+
+  // Retain block counts for the stats card
+  const doneBlocks = plan?.micro_blocks.filter((b) => b.status === "done").length ?? 0;
+  const partialBlocks = plan?.micro_blocks.filter((b) => b.status === "partial").length ?? 0;
+  const totalBlocks = plan?.micro_blocks.length ?? 0;
+
   async function handleReplan() {
-    setActionLoading("replan");
-    try {
-      // Re-generate plan
-      await fetch(`/api/plans/replan-all?window=7`, { method: "POST", headers: { "X-User-Id": "demo-user-001" } });
+    await runAction("replan", async () => {
+      await replanAllPlans(7);
       await loadData();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setActionLoading("");
-    }
+    });
   }
 
   async function handleStatusChange(blockId: string, status: string) {
@@ -231,7 +246,7 @@ export default function UnifiedGoalDashboard() {
   }
 
   function formatDateHeader(dateStr: string) {
-    const d = new Date(dateStr);
+    const d = parseDateKey(dateStr);
     return {
       dayOfWeek: d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
       dayOfMonth: d.getDate()
@@ -268,7 +283,11 @@ export default function UnifiedGoalDashboard() {
             Topics changed after retrieval. Your current plan may be stale.
           </div>
           <button
-            onClick={async () => { setActionLoading("plan"); await generatePlan(goalId); await loadData(); setReviewDirty(false); setActionLoading(""); }}
+            onClick={() => void runAction("plan", async () => {
+              await generatePlan(goalId);
+              await loadData();
+              setReviewDirty(false);
+            })}
             disabled={!!actionLoading}
             className="px-4 py-1.5 bg-sky-600 text-white rounded-md font-bold text-xs hover:bg-sky-700 transition"
           >
@@ -303,17 +322,37 @@ export default function UnifiedGoalDashboard() {
             <Clock className="w-4 h-4 mr-1.5" />
             {daysLeft} DAYS LEFT
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{goal.status}</span>
+            {plan ? <span>{progressPercent}% complete</span> : null}
+            {partialTopicIds.size > 0 ? <span>{partialTopicIds.size} topic{partialTopicIds.size !== 1 ? "s" : ""} in progress</span> : null}
+          </div>
         </div>
         
         {/* Actions - typically in a navbar, but placed here for MVP */}
         <div className="flex gap-3">
-          <button className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">
+          <Link href={`/goals/${goalId}/edit`} className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">
             Edit Goal
-          </button>
+          </Link>
+          {goal.status !== "completed" ? (
+            <button
+              onClick={() => void runAction("complete", async () => {
+                await updateGoal(goalId, { status: "completed" });
+                await loadData();
+              })}
+              disabled={!!actionLoading}
+              className="px-5 py-2.5 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition"
+            >
+              {actionLoading === "complete" ? "Saving..." : "Mark Complete"}
+            </button>
+          ) : null}
           {isHabitGoal ? (
             !plan ? (
               <button 
-                onClick={async () => { setActionLoading("plan"); await generatePlan(goalId); await loadData(); setActionLoading(""); }}
+                onClick={() => void runAction("plan", async () => {
+                  await generatePlan(goalId);
+                  await loadData();
+                })}
                 disabled={!!actionLoading}
                 className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
               >
@@ -321,7 +360,9 @@ export default function UnifiedGoalDashboard() {
               </button>
             ) : (
               <button 
-                onClick={async () => { setActionLoading("sync"); await syncCalendar(plan.plan_id); setActionLoading(""); }}
+                onClick={() => void runAction("sync", async () => {
+                  await syncCalendar(plan.plan_id);
+                })}
                 disabled={!!actionLoading}
                 className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
               >
@@ -331,7 +372,10 @@ export default function UnifiedGoalDashboard() {
             )
           ) : !knowledge ? (
             <button 
-              onClick={async () => { setActionLoading("ingest"); await triggerIngest(goalId); await loadData(); setActionLoading(""); }}
+              onClick={() => void runAction("ingest", async () => {
+                await triggerIngest(goalId);
+                await loadData();
+              })}
               disabled={!!actionLoading}
               className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
             >
@@ -339,7 +383,10 @@ export default function UnifiedGoalDashboard() {
             </button>
           ) : !plan ? (
             <button 
-              onClick={async () => { setActionLoading("plan"); await generatePlan(goalId); await loadData(); setActionLoading(""); }}
+              onClick={() => void runAction("plan", async () => {
+                await generatePlan(goalId);
+                await loadData();
+              })}
               disabled={!!actionLoading}
               className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
             >
@@ -347,7 +394,9 @@ export default function UnifiedGoalDashboard() {
             </button>
           ) : (
             <button 
-              onClick={async () => { setActionLoading("sync"); await syncCalendar(plan.plan_id); setActionLoading(""); }}
+              onClick={() => void runAction("sync", async () => {
+                await syncCalendar(plan.plan_id);
+              })}
               disabled={!!actionLoading}
               className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
             >
@@ -385,6 +434,34 @@ export default function UnifiedGoalDashboard() {
             </div>
           ) : (
             <>
+              {plan ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Progress</p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-brand-600" style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    {Math.round(doneMinutes / 60 * 10) / 10}h done
+                    {partialMinutes > 0 ? ` · ${Math.round(partialMinutes / 60 * 10) / 10}h partial` : ""}
+                    {" · "}{Math.round(totalMinutes / 60 * 10) / 10}h total
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
+                    <div>
+                      <p className="text-lg font-semibold text-slate-900">{completedTopicIds.size}</p>
+                      <p>Topics done</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-semibold text-amber-600">{partialTopicIds.size}</p>
+                      <p>In progress</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-semibold text-slate-900">{topicIds.length}</p>
+                      <p>Topics total</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {/* Topics List */}
               {knowledge && (
                 <div>
@@ -500,7 +577,15 @@ export default function UnifiedGoalDashboard() {
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-slate-700 truncate pr-1" title={t.title}>{t.title}</span>
-                                {t.source === "user" ? (
+                                {completedTopicIds.has(t.topic_id) ? (
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                                    done
+                                  </span>
+                                ) : partialTopicIds.has(t.topic_id) ? (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                    in progress
+                                  </span>
+                                ) : t.source === "user" ? (
                                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
                                     edited
                                   </span>
@@ -612,12 +697,14 @@ export default function UnifiedGoalDashboard() {
                 {(selectedDate && blocksByDate[selectedDate] ? blocksByDate[selectedDate] : []).map(block => {
                   const topic = knowledge?.topics.find(t => t.topic_id === block.topic_id);
                   const isDone = block.status === "done";
+                  const isPartial = block.status === "partial";
                   const isMissed = block.status === "missed";
                   // Assuming the next 'scheduled' block is active
                   const isActive = block.status === "scheduled" && new Date(block.start_dt).getTime() < Date.now() + 3600000;
                   
                   let cardStyle = "block-upcoming";
                   if (isDone) cardStyle = "block-done";
+                  else if (isPartial) cardStyle = "block-partial";
                   else if (isMissed) cardStyle = "block-missed";
                   else if (isActive) cardStyle = "block-active";
 
@@ -654,6 +741,13 @@ export default function UnifiedGoalDashboard() {
                                 <CheckCircle2 className="w-5 h-5" />
                               </button>
                               <button
+                                onClick={() => handleStatusChange(block.block_id, "partial")}
+                                disabled={blockActionId === block.block_id}
+                                className="p-2 text-amber-600 hover:bg-amber-100 rounded-full transition disabled:opacity-50"
+                              >
+                                <Clock className="w-5 h-5" />
+                              </button>
+                              <button
                                 onClick={() => handleStatusChange(block.block_id, "missed")}
                                 disabled={blockActionId === block.block_id}
                                 className="p-2 text-red-500 hover:bg-red-50 rounded-full transition disabled:opacity-50"
@@ -663,6 +757,12 @@ export default function UnifiedGoalDashboard() {
                             </>
                           )}
                           {isDone && <CheckCircle2 className="w-6 h-6 text-green-600" />}
+                          {isPartial && (
+                            <div className="flex flex-col items-center">
+                              <Clock className="w-5 h-5 text-amber-600 mb-0.5" />
+                              <span className="text-[9px] font-bold text-amber-600 tracking-wider">PARTIAL</span>
+                            </div>
+                          )}
                           {isMissed && (
                             <div className="flex flex-col items-center">
                               <AlertTriangle className="w-5 h-5 text-red-500 mb-0.5" />

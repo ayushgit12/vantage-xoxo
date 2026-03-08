@@ -14,6 +14,7 @@ from shared.models import (
     ScenarioIntakeResponse,
 )
 from shared.models.goal import GoalCategory, GoalPriority, GoalType
+from shared.models.goal import GoalStatus
 from shared.db.repositories import goals_repo
 from shared.config import get_settings
 from agents.intake.agent import parse_scenario_to_goal
@@ -51,6 +52,11 @@ def _normalize_goal_doc(doc: dict) -> tuple[dict, dict]:
         normalized["priority"] = priority
         updates["priority"] = priority
 
+    status = _normalize_goal_enum(doc.get("status"), GoalStatus, GoalStatus.ACTIVE.value)
+    if doc.get("status") != status:
+        normalized["status"] = status
+        updates["status"] = status
+
     if normalized.get("description") is None:
         normalized["description"] = ""
         updates["description"] = ""
@@ -66,6 +72,10 @@ def _normalize_goal_doc(doc: dict) -> tuple[dict, dict]:
     if normalized.get("prefer_user_materials_only") is None:
         normalized["prefer_user_materials_only"] = False
         updates["prefer_user_materials_only"] = False
+
+    if normalized.get("completed_at") is None and normalized.get("status") == GoalStatus.COMPLETED.value:
+        normalized["completed_at"] = normalized.get("updated_at")
+        updates["completed_at"] = normalized.get("updated_at")
 
     return normalized, updates
 
@@ -158,7 +168,13 @@ async def update_goal(
     doc = await goals_repo.find_by_id(goal_id)
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
-    updates = body.model_dump(exclude_none=True, mode="json")
+    updates = body.model_dump(exclude_unset=True, mode="json")
+    if updates.get("status") == GoalStatus.COMPLETED.value and "completed_at" not in updates:
+        from datetime import datetime, timezone
+
+        updates["completed_at"] = datetime.now(timezone.utc).isoformat()
+    elif updates.get("status") in {GoalStatus.ACTIVE.value, GoalStatus.PAUSED.value, GoalStatus.ARCHIVED.value}:
+        updates["completed_at"] = None
     if updates:
         await goals_repo.update(goal_id, updates)
     updated = await goals_repo.find_by_id(goal_id)

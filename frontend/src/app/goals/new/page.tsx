@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createGoalFromScenario } from "@/lib/api";
+import { toDeadlineIso } from "@/lib/schedule";
 
 const PRIORITIES = ["high", "medium", "low"];
 
@@ -32,7 +33,7 @@ export default function NewGoalPage() {
       material_urls: materialUrls,
     };
     if (manualDeadline) {
-      overrides.deadline = new Date(manualDeadline).toISOString();
+      overrides.deadline = toDeadlineIso(manualDeadline);
     }
     const weeklyHours = form.get("weekly_hours");
     if (weeklyHours) {

@@ -17,6 +17,12 @@ from shared.models.constraint import ConstraintType
 SLOT_MINUTES = 30
 
 
+def _hour_in_window(hour: int, start_hour: int, end_hour: int) -> bool:
+    if start_hour < end_hour:
+        return start_hour <= hour < end_hour
+    return hour >= start_hour or hour < end_hour
+
+
 class TimeSlot:
     """A 30-minute slot on a specific date."""
 
@@ -51,15 +57,30 @@ class AvailabilityMatrix:
                     self.slots.append(TimeSlot(dt, hour, minute))
 
     def block_range(self, dt: date, start_hour: int, end_hour: int):
-        """Mark slots as unavailable."""
+        """Mark slots as unavailable (integer-hour granularity)."""
         for slot in self.slots:
             if slot.date == dt and start_hour <= slot.hour < end_hour:
+                slot.available = False
+
+    def block_slot_range(self, dt: date, start_hour: int, start_min: int, duration_min: int):
+        """Mark slots as unavailable with minute-precise start and duration.
+
+        Unlike block_range, this respects :30 starts so a block at 9:30 does not
+        accidentally block the 9:00 slot.
+        """
+        start_total = start_hour * 60 + start_min
+        end_total = start_total + duration_min
+        for slot in self.slots:
+            if slot.date != dt:
+                continue
+            slot_total = slot.hour * 60 + slot.minute
+            if start_total <= slot_total < end_total:
                 slot.available = False
 
     def block_recurring(self, days_of_week: list[int], start_hour: int, end_hour: int):
         """Block recurring slots (e.g., Mon/Wed 9-10)."""
         for slot in self.slots:
-            if slot.date.weekday() in days_of_week and start_hour <= slot.hour < end_hour:
+            if slot.date.weekday() in days_of_week and _hour_in_window(slot.hour, start_hour, end_hour):
                 slot.available = False
 
     def get_available_slots(self, dt: date | None = None) -> list[TimeSlot]:
@@ -144,7 +165,7 @@ def build_availability_matrix(
             for window in user.preferred_time_windows:
                 if (
                     slot.date.weekday() in window.days
-                    and window.start_hour <= slot.hour < window.end_hour
+                    and _hour_in_window(slot.hour, window.start_hour, window.end_hour)
                 ):
                     in_preferred = True
                     break

@@ -10,7 +10,7 @@ from shared.config import get_settings
 from shared.db.cosmos_client import close_database
 from shared.telemetry.tracing import init_tracing
 
-from api.routers import goals, retriever, plans, blocks, sync, telemetry
+from api.routers import goals, retriever, plans, blocks, sync, telemetry, users, constraints
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,8 @@ app.include_router(plans.router, prefix="/api/plans", tags=["Plans"])
 app.include_router(blocks.router, prefix="/api/blocks", tags=["Blocks"])
 app.include_router(sync.router, prefix="/api/sync", tags=["Sync"])
 app.include_router(telemetry.router, prefix="/api/telemetry", tags=["Telemetry"])
+app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(constraints.router, prefix="/api/constraints", tags=["Constraints"])
 
 
 @app.get("/api/health")

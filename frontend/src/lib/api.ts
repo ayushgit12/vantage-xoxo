@@ -1,17 +1,22 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set("X-User-Id", "demo-user-001");
+  if (!(options?.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": "demo-user-001", // MVP: hardcoded demo user
-      ...options?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || "API error");
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json();
 }
@@ -35,6 +40,9 @@ export const createGoalFromScenario = (body: ScenarioGoalRequest) =>
 export const listGoals = () => apiFetch<Goal[]>("/api/goals");
 
 export const getGoal = (id: string) => apiFetch<Goal>(`/api/goals/${id}`);
+
+export const updateGoal = (id: string, body: GoalUpdate) =>
+  apiFetch<Goal>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 
 export const deleteGoal = (id: string) =>
   apiFetch(`/api/goals/${id}`, { method: "DELETE" });
@@ -76,6 +84,9 @@ export const getPlan = (planId: string) => apiFetch<Plan>(`/api/plans/${planId}`
 export const getPlanForGoal = (goalId: string) =>
   apiFetch<Plan>(`/api/plans/goal/${goalId}`);
 
+export const replanAllPlans = (window = 7) =>
+  apiFetch(`/api/plans/replan-all?window=${window}`, { method: "POST" });
+
 // ─── Blocks ───
 export const updateBlockStatus = (blockId: string, status: string) =>
   apiFetch(`/api/blocks/${blockId}/status`, {
@@ -87,15 +98,55 @@ export const updateBlockStatus = (blockId: string, status: string) =>
 export const syncCalendar = (planId: string) =>
   apiFetch(`/api/sync/calendar/${planId}`, { method: "POST" });
 
+// ─── Users ───
+export const getUserProfile = () => apiFetch<UserProfile>("/api/users/profile");
+
+export const updateUserProfile = (body: UserProfileUpdate) =>
+  apiFetch<UserProfile>("/api/users/profile", { method: "PUT", body: JSON.stringify(body) });
+
+// ─── Constraints ───
+export const listConstraints = () => apiFetch<TimeConstraint[]>("/api/constraints");
+
+export const createConstraint = (body: ConstraintCreateRequest) =>
+  apiFetch<TimeConstraint>("/api/constraints", { method: "POST", body: JSON.stringify(body) });
+
+export const updateConstraint = (constraintId: string, body: ConstraintUpdateRequest) =>
+  apiFetch<TimeConstraint>(`/api/constraints/${constraintId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteConstraint = (constraintId: string) =>
+  apiFetch(`/api/constraints/${constraintId}`, { method: "DELETE" });
+
 // ─── Types ───
 export interface GoalCreate {
   title: string;
+  description?: string;
+  goal_type?: GoalType;
   category: string;
   deadline: string;
-  priority: string;
+  priority: GoalPriority;
+  status?: GoalStatus;
   target_weekly_effort?: number;
+  preferred_schedule?: TimeWindow | null;
   prefer_user_materials_only?: boolean;
   material_urls?: string[];
+}
+
+export interface GoalUpdate {
+  title?: string;
+  description?: string;
+  goal_type?: GoalType;
+  category?: string;
+  deadline?: string;
+  priority?: GoalPriority;
+  status?: GoalStatus;
+  target_weekly_effort?: number | null;
+  preferred_schedule?: TimeWindow | null;
+  prefer_user_materials_only?: boolean;
+  material_urls?: string[];
+  completed_at?: string | null;
 }
 
 export interface Goal {
@@ -103,14 +154,17 @@ export interface Goal {
   user_id: string;
   title: string;
   description?: string;
-  goal_type?: "habit" | "learning" | "project";
+  goal_type?: GoalType;
   category: string;
   deadline: string;
-  priority: string;
+  priority: GoalPriority;
+  status: GoalStatus;
   target_weekly_effort?: number;
+  preferred_schedule?: TimeWindow | null;
   prefer_user_materials_only: boolean;
   material_urls: string[];
   uploaded_file_ids: string[];
+  completed_at?: string | null;
   knowledge_id?: string;
   active_plan_id?: string;
 }
@@ -170,7 +224,81 @@ export interface Plan {
   plan_window_days: number;
   micro_blocks: MicroBlock[];
   explanation: string;
+  // Snapshotted from GoalKnowledge at plan-creation time.
+  // Use this as the progress denominator so progress reflects the full goal,
+  // not just the current 7-day window.
+  total_estimated_hours: number;
 }
+
+export interface TimeWindow {
+  start_hour: number;
+  end_hour: number;
+  days: number[];
+  duration_min?: number | null;
+}
+
+export interface UserProfile {
+  user_id: string;
+  display_name: string;
+  email: string;
+  timezone: string;
+  daily_capacity_hours: number;
+  max_topics_per_day: number;
+  preferred_time_windows: TimeWindow[];
+  sleep_window?: TimeWindow | null;
+  calendar_id?: string | null;
+}
+
+export interface UserProfileUpdate {
+  display_name?: string;
+  email?: string;
+  timezone: string;
+  daily_capacity_hours: number;
+  max_topics_per_day: number;
+  preferred_time_windows: TimeWindow[];
+  sleep_window?: TimeWindow | null;
+  calendar_id?: string | null;
+}
+
+export interface TimeConstraint {
+  constraint_id: string;
+  user_id: string;
+  type: ConstraintType;
+  title: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  recurrence_rule?: string | null;
+  recurring_start?: string | null;
+  recurring_end?: string | null;
+  recurring_days: number[];
+  created_at: string;
+}
+
+export interface ConstraintCreateRequest {
+  type: ConstraintType;
+  title: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  recurrence_rule?: string | null;
+  recurring_start?: string | null;
+  recurring_end?: string | null;
+  recurring_days?: number[];
+}
+
+export interface ConstraintUpdateRequest {
+  title?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  recurrence_rule?: string | null;
+  recurring_start?: string | null;
+  recurring_end?: string | null;
+  recurring_days?: number[];
+}
+
+export type GoalType = "habit" | "learning" | "project";
+export type GoalPriority = "high" | "medium" | "low";
+export type GoalStatus = "active" | "paused" | "completed" | "archived";
+export type ConstraintType = "fixed" | "recurring" | "soft";
 
 export interface ScenarioGoalRequest {
   scenario_text: string;
@@ -178,23 +306,18 @@ export interface ScenarioGoalRequest {
     title?: string;
     description?: string;
     category?: string;
-    priority?: string;
+    priority?: GoalPriority;
     deadline?: string;
     target_weekly_effort?: number;
     prefer_user_materials_only?: boolean;
     material_urls?: string[];
-    preferred_schedule?: {
-      start_hour: number;
-      end_hour: number;
-      days: number[];
-      duration_min?: number;
-    };
+    preferred_schedule?: TimeWindow;
   };
 }
 
 export interface ScenarioGoalPreview {
   scenario_text: string;
-  inferred_goal_type: "habit" | "learning" | "project";
+  inferred_goal_type: GoalType;
   confidence: number;
   assumptions: string[];
   warnings: string[];

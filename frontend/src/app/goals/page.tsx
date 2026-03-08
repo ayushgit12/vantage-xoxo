@@ -12,6 +12,7 @@ import {
   type Plan, 
   type MicroBlock 
 } from "@/lib/api";
+import { computeBlockProgress, getDefaultSelectedDate, getSortedDates, groupBlocksByDate, parseDateKey } from "@/lib/schedule";
 import { 
   CheckCircle2, ChevronLeft, ChevronRight, 
   Clock, AlertTriangle, XCircle, Trash2, Calendar as CalIcon
@@ -32,9 +33,19 @@ export default function AllGoalsDashboard() {
   
   const [globalBlocks, setGlobalBlocks] = useState<GlobalBlock[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const visibleGoals = goals.filter((goal) => goal.status !== "completed" && goal.status !== "archived");
+
+  function getGoalProgress(goalId: string) {
+    const goalBlocks = globalBlocks.filter((block) => block.goal_id === goalId);
+    if (goalBlocks.length === 0) {
+      return 0;
+    }
+    // Effort-weighted: a 2-hour block counts more than a 30-min block.
+    return computeBlockProgress(goalBlocks).progressPct;
+  }
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   async function loadData() {
@@ -45,8 +56,8 @@ export default function AllGoalsDashboard() {
       setGoals(allGoals);
 
       // 2. Fetch plans & knowledge for active goals concurrently
-      const activeGoals = allGoals.filter(g => g.active_plan_id);
-      const planPromises = activeGoals.map(g => getPlanForGoal(g.goal_id).catch(() => null));
+      const scheduledGoals = allGoals.filter((goal) => goal.status === "active" && goal.active_plan_id);
+      const planPromises = scheduledGoals.map(g => getPlanForGoal(g.goal_id).catch(() => null));
       const knowledgePromises = allGoals.filter(g => g.knowledge_id).map(g => getKnowledge(g.goal_id).catch(() => null));
 
       const plansResp = await Promise.all(planPromises);
@@ -67,7 +78,7 @@ export default function AllGoalsDashboard() {
       // 3. Merge all microblocks globally
       let mergedBlocks: GlobalBlock[] = [];
       validPlans.forEach(plan => {
-        const parentGoal = activeGoals.find(g => g.goal_id === plan.goal_id);
+        const parentGoal = scheduledGoals.find(g => g.goal_id === plan.goal_id);
         const goalTitle = parentGoal?.title || "Unknown Goal";
 
         const mappedBlocks = plan.micro_blocks.map(b => ({
@@ -128,25 +139,17 @@ export default function AllGoalsDashboard() {
   }
 
   // Group fetched global blocks by date string
-  const blocksByDate = globalBlocks.reduce((acc, block) => {
-    const dateStr = new Date(block.start_dt).toISOString().split('T')[0];
-    if (!acc[dateStr]) acc[dateStr] = [];
-    acc[dateStr].push(block);
-    return acc;
-  }, {} as Record<string, GlobalBlock[]>);
-
-  const availableDates = Object.keys(blocksByDate).sort();
+  const blocksByDate = groupBlocksByDate(globalBlocks);
+  const availableDates = getSortedDates(blocksByDate);
 
   // Set default selected date if none chosen
   useEffect(() => {
-    if (!selectedDate && availableDates.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
-      if (availableDates.includes(today)) {
-        setSelectedDate(today);
-      } else {
-        setSelectedDate(availableDates[0]);
+    setSelectedDate((current) => {
+      if (current && availableDates.includes(current)) {
+        return current;
       }
-    }
+      return getDefaultSelectedDate(availableDates);
+    });
   }, [availableDates, selectedDate]);
 
   function formatTime(isoString: string) {
@@ -154,7 +157,7 @@ export default function AllGoalsDashboard() {
   }
 
   function formatDateHeader(dateStr: string) {
-    const d = new Date(dateStr);
+    const d = parseDateKey(dateStr);
     return {
       dayOfWeek: d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
       dayOfMonth: d.getDate()
@@ -222,11 +225,13 @@ export default function AllGoalsDashboard() {
           <div className="px-6 py-2 pb-6 space-y-6 max-h-[500px] overflow-y-auto">
             {(selectedDate && blocksByDate[selectedDate] ? blocksByDate[selectedDate] : []).map(block => {
               const isDone = block.status === "done";
+              const isPartial = block.status === "partial";
               const isMissed = block.status === "missed";
               const isActive = block.status === "scheduled" && new Date(block.start_dt).getTime() < Date.now() + 3600000;
               
               let cardStyle = "block-upcoming";
               if (isDone) cardStyle = "block-done";
+              else if (isPartial) cardStyle = "block-partial";
               else if (isMissed) cardStyle = "block-missed";
               else if (isActive) cardStyle = "block-active";
 
@@ -266,6 +271,13 @@ export default function AllGoalsDashboard() {
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
                           <button
+                            onClick={() => handleStatusChange(block.block_id, "partial")}
+                            disabled={blockActionId === block.block_id}
+                            className="p-2 text-amber-600 hover:bg-amber-100 rounded-full transition disabled:opacity-50"
+                          >
+                            <Clock className="w-5 h-5" />
+                          </button>
+                          <button
                             onClick={() => handleStatusChange(block.block_id, "missed")}
                             disabled={blockActionId === block.block_id}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-full transition disabled:opacity-50"
@@ -275,6 +287,12 @@ export default function AllGoalsDashboard() {
                         </>
                       )}
                       {isDone && <CheckCircle2 className="w-6 h-6 text-green-600" />}
+                      {isPartial && (
+                        <div className="flex flex-col items-center">
+                          <Clock className="w-5 h-5 text-amber-600 mb-0.5" />
+                          <span className="text-[9px] font-bold text-amber-600 tracking-wider">PARTIAL</span>
+                        </div>
+                      )}
                       {isMissed && (
                         <div className="flex flex-col items-center">
                           <AlertTriangle className="w-5 h-5 text-red-500 mb-0.5" />
@@ -301,18 +319,19 @@ export default function AllGoalsDashboard() {
         <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center">
           Active Goals
           <span className="ml-3 px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-xs font-bold">
-            {goals.length}
+            {visibleGoals.length}
           </span>
         </h2>
         
-        {goals.length === 0 ? (
+        {visibleGoals.length === 0 ? (
           <div className="text-center py-10 bg-white border rounded-2xl">
             <p className="text-slate-500 mb-4">No goals yet. Create one to get started!</p>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {goals.map((goal) => {
+            {visibleGoals.map((goal) => {
               const daysLeft = Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+              const progress = getGoalProgress(goal.goal_id);
               
               return (
                 <div key={goal.goal_id} className="relative group p-5 border border-slate-200 rounded-2xl bg-white hover:shadow-lg hover:border-brand-200 transition-all flex flex-col justify-between">
@@ -326,9 +345,10 @@ export default function AllGoalsDashboard() {
                       <div className="flex items-center text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider gap-2">
                         <span>{goal.category}</span>
                         <span>•</span>
-                        <span className={`px-1.5 py-0.5 rounded ${goal.priority === 'High' ? 'bg-red-50 text-red-600' : goal.priority === 'Medium' ? 'bg-yellow-50 text-yellow-600' : 'bg-green-50 text-green-600'}`}>
+                        <span className={`px-1.5 py-0.5 rounded ${goal.priority === 'high' ? 'bg-red-50 text-red-600' : goal.priority === 'medium' ? 'bg-yellow-50 text-yellow-600' : 'bg-green-50 text-green-600'}`}>
                           {goal.priority}
                         </span>
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">{goal.status}</span>
                       </div>
                     </div>
                     
@@ -343,9 +363,19 @@ export default function AllGoalsDashboard() {
                   </div>
                   
                   <div className="relative z-10 flex items-center justify-between mt-auto pt-4 border-t border-slate-100">
-                    <div className="flex items-center text-sm font-medium text-slate-500">
-                      <Clock className="w-3.5 h-3.5 mr-1" />
-                      {daysLeft} days left
+                    <div className="space-y-1">
+                      <div className="flex items-center text-sm font-medium text-slate-500">
+                        <Clock className="w-3.5 h-3.5 mr-1" />
+                        {daysLeft} days left
+                      </div>
+                      {goal.active_plan_id ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-brand-600" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-500">{progress}%</span>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex gap-2">
                       {goal.knowledge_id && !goal.active_plan_id && (

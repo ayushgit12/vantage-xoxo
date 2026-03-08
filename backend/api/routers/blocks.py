@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agents.planner.agent import replan_all_goals
+from agents.executor.status_tracker import validate_status_transition
 from api.dependencies import get_current_user_id
 from shared.models import BlockStatus
 from shared.db.repositories import plans_repo
@@ -49,6 +50,22 @@ async def update_block_status(
     plan_doc = await _find_plan_by_block_id(user_id, block_id)
     if not plan_doc:
         raise HTTPException(status_code=404, detail="Block not found")
+
+    # Enforce the state machine before writing anything.
+    current_block = next(
+        (b for b in plan_doc.get("micro_blocks", []) if b.get("block_id") == block_id),
+        None,
+    )
+    if current_block:
+        try:
+            current_status = BlockStatus(current_block["status"])
+        except ValueError:
+            current_status = BlockStatus.SCHEDULED
+        if not validate_status_transition(current_status, body.status):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid transition: '{current_status}' → '{body.status}'",
+            )
 
     # Update block status in the plan document
     updated = _apply_block_status(plan_doc, block_id, body.status)

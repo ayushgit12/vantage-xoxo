@@ -6,6 +6,11 @@ set -e
 # Make sure we're in the right directory
 cd "$(dirname "$0")"
 
+# Local dev should not inherit broken corporate/system proxy vars.
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+export NO_PROXY="localhost,127.0.0.1,0.0.0.0"
+export no_proxy="$NO_PROXY"
+
 echo "Starting Vantage local environment..."
 
 # 1. Start backend in the background
