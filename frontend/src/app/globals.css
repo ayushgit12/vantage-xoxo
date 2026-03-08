@@ -13,8 +13,9 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* Utility classes for the plan timeline */
-.block-done { @apply bg-green-100 border-green-400; }
-.block-partial { @apply bg-yellow-100 border-yellow-400; }
-.block-missed { @apply bg-red-100 border-red-400; }
-.block-scheduled { @apply bg-blue-50 border-blue-300; }
+/* Utility classes for the plan timeline matching mockup colors */
+.block-done { @apply bg-[#edfae9] border-[#e1f5db] text-[#334b2e]; }
+.block-partial { @apply bg-[#fef5e7] border-[#faead4] text-[#a4632b]; }
+.block-missed { @apply bg-[#ffebee] border-[#ffccd5] text-[#b30026]; }
+.block-upcoming { @apply bg-white border-blue-200 text-blue-900 border; }
+.block-active { @apply bg-white border-blue-600 border-2 shadow-sm text-blue-900; }
