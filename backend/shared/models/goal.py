@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
 
-class GoalCategory(StrEnum):
+class GoalCategory(str, Enum):
     COURSE = "course"
     PROJECT = "project"
     SKILL = "skill"
@@ -14,7 +14,7 @@ class GoalCategory(StrEnum):
     OTHER = "other"
 
 
-class GoalPriority(StrEnum):
+class GoalPriority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"

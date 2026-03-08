@@ -1,10 +1,10 @@
 from datetime import datetime, time, timezone
-from enum import StrEnum
+from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
 
-class ConstraintType(StrEnum):
+class ConstraintType(str, Enum):
     FIXED = "fixed"        # one-time block (e.g., dentist appointment)
     RECURRING = "recurring" # weekly class, gym, etc.
     SOFT = "soft"          # preference, can be overridden

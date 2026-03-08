@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
 
-class BlockStatus(StrEnum):
+class BlockStatus(str, Enum):
     SCHEDULED = "scheduled"
     DONE = "done"
     PARTIAL = "partial"

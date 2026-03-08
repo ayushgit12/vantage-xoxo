@@ -125,34 +125,40 @@ async def extract_topics_and_milestones(
             goal_category=goal_category,
         )
 
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
-            temperature=0.0,
-            max_output_tokens=4000,
-            response_mime_type="application/json",
-        ),
-    )
+    # --- DEBUG ---
+    logger.info("[DEBUG] Gemini model: %s", settings.gemini_model)
+    logger.info("[DEBUG] Prompt length: %d chars", len(prompt))
+    logger.info("[DEBUG] Has material: %s, Chunks count: %d", has_material, len(chunks))
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=20000,
+                response_mime_type="application/json",
+            ),
+        )
+    except Exception as e:
+        logger.error("[DEBUG] Gemini API call failed: %s", e, exc_info=True)
+        raise
 
     result_text = response.text.strip()
-    # Strip markdown code blocks if present
-    if result_text.startswith("```"):
-        result_text = result_text.split("\n", 1)[1]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
-        result_text = result_text.strip()
+    logger.info("[DEBUG] Gemini raw response length: %d chars", len(result_text))
+    logger.info("[DEBUG] Gemini raw response (first 500 chars):\n%s", result_text[:500])
+
+    # Strip markdown code fences if present
+    import re
+    result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
+    result_text = re.sub(r"\n?```\s*$", "", result_text)
+    result_text = result_text.strip()
 
     try:
         result = json.loads(result_text)
-    except json.JSONDecodeError:
-        # Try to fix common issues: trailing commas, single quotes
-        import re
-        fixed = re.sub(r",\s*([}\]])", r"\1", result_text)  # remove trailing commas
-        try:
-            result = json.loads(fixed)
-        except json.JSONDecodeError:
-            logger.warning("Gemini returned unparseable JSON; falling back to embeddings")
-            return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
+    except json.JSONDecodeError as e:
+        logger.error("[DEBUG] JSON parse error: %s", e)
+        logger.error("[DEBUG] Full raw response:\n%s", result_text)
+        raise ValueError(f"Gemini returned invalid JSON: {e}") from e
 
     await set_cached(cache_key, result)
     logger.info("Extracted %d topics for %s via Gemini", len(result.get("topics", [])), goal_title)

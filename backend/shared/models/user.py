@@ -14,6 +14,7 @@ class UserProfile(BaseModel):
     email: str = ""
     timezone: str = "UTC"
     daily_capacity_hours: float = 8.0
+    max_topics_per_day: int = 2  # max distinct topics scheduled in one day
     preferred_time_windows: list[TimeWindow] = Field(default_factory=list)
     sleep_window: TimeWindow | None = None  # hours when user sleeps
     calendar_id: str | None = None  # Microsoft Graph calendar id

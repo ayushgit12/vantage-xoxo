@@ -6,10 +6,29 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dependencies import get_current_user_id
 from shared.models import Plan
 from shared.db.repositories import plans_repo, goals_repo
-from agents.planner.agent import run_planner
+from agents.planner.agent import run_planner, replan_all_goals
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.post("/replan-all")
+async def replan_all(
+    window: int = Query(default=7, ge=1, le=30),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Replan ALL goals together so nothing overlaps."""
+    try:
+        plans = await replan_all_goals(user_id, window_days=window)
+        return {
+            "status": "completed",
+            "goals_planned": len(plans),
+            "total_blocks": sum(len(p.micro_blocks) for p in plans),
+            "window": window,
+        }
+    except Exception as e:
+        logger.exception("Global replan failed for user %s", user_id)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/generate")

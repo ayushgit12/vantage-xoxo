@@ -19,7 +19,7 @@ def compute_macro_allocations(
 ) -> list[MacroAllocation]:
     """Distribute estimated hours across weeks until deadline."""
     if isinstance(deadline, str):
-        deadline = datetime.fromisoformat(deadline)
+        deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
 
     # Ensure deadline is timezone-aware
     if deadline.tzinfo is None:

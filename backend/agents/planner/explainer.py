@@ -47,7 +47,7 @@ async def explain_plan(plan: Plan, knowledge: GoalKnowledge) -> str:
                 f"Explain this study plan concisely in 2-3 sentences: {explanation}",
                 generation_config=genai.GenerationConfig(
                     temperature=0.0,
-                    max_output_tokens=200,
+                    max_output_tokens=20000,
                 ),
             )
             llm_explanation = resp.text.strip()

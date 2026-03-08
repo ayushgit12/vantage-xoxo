@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -49,7 +50,7 @@ class Settings(BaseSettings):
     # Calendar
     use_mock_calendar: bool = True
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
 
 @lru_cache

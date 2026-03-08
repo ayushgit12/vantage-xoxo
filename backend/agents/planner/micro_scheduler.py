@@ -32,6 +32,8 @@ def schedule_micro_blocks(
     macro_allocations: list[MacroAllocation],
     availability: AvailabilityMatrix,
     seed: int = 42,
+    max_topics_per_day: int = 2,
+    max_daily_minutes: int = MAX_DAILY_MINUTES,
 ) -> list[MicroBlock]:
     """Deterministically schedule micro blocks into available slots."""
     rng = random.Random(seed)
@@ -60,8 +62,9 @@ def schedule_micro_blocks(
     # Map topic_id -> Topic for resource refs
     topic_map = {t.topic_id: t for t in knowledge.topics}
 
-    # Track minutes used per day to enforce daily cap
+    # Track minutes and topics used per day
     daily_used: dict[str, int] = {}  # date string -> minutes used
+    daily_topics: dict[str, set] = {}  # date string -> set of topic_ids
 
     slot_index = 0
 
@@ -75,12 +78,19 @@ def schedule_micro_blocks(
             # Check daily cap
             day_key = str(available_block[0].date)
             used_today = daily_used.get(day_key, 0)
-            if used_today >= MAX_DAILY_MINUTES:
+            if used_today >= max_daily_minutes:
+                slot_index += 1
+                continue
+
+            # Check topic-per-day limit
+            if day_key not in daily_topics:
+                daily_topics[day_key] = set()
+            if topic_id not in daily_topics[day_key] and len(daily_topics[day_key]) >= max_topics_per_day:
                 slot_index += 1
                 continue
 
             # Determine block duration
-            daily_remaining = MAX_DAILY_MINUTES - used_today
+            daily_remaining = max_daily_minutes - used_today
             block_minutes = min(
                 remaining,
                 available_minutes,
@@ -116,6 +126,7 @@ def schedule_micro_blocks(
 
             # Track daily usage
             daily_used[day_key] = daily_used.get(day_key, 0) + block_minutes
+            daily_topics[day_key].add(topic_id)
 
             # Mark used slots as unavailable
             for s in used_slots:

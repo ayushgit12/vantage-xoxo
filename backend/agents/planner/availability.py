@@ -121,9 +121,9 @@ def build_availability_matrix(
             end = c.get("end_time")
             if start and end:
                 if isinstance(start, str):
-                    start = datetime.fromisoformat(start)
+                    start = datetime.fromisoformat(start.replace("Z", "+00:00"))
                 if isinstance(end, str):
-                    end = datetime.fromisoformat(end)
+                    end = datetime.fromisoformat(end.replace("Z", "+00:00"))
                 matrix.block_range(start.date(), start.hour, end.hour)
 
         elif c_type == ConstraintType.RECURRING:
