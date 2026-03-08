@@ -46,6 +46,27 @@ export const triggerIngest = (goalId: string) =>
 export const getKnowledge = (goalId: string) =>
   apiFetch<GoalKnowledge>(`/api/retriever/knowledge/${goalId}`);
 
+export const addKnowledgeTopic = (goalId: string, body: TopicCreateRequest) =>
+  apiFetch<GoalKnowledge>(`/api/retriever/knowledge/${goalId}/topics`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const updateKnowledgeTopic = (
+  goalId: string,
+  topicId: string,
+  body: TopicUpdateRequest,
+) =>
+  apiFetch<GoalKnowledge>(`/api/retriever/knowledge/${goalId}/topics/${topicId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteKnowledgeTopic = (goalId: string, topicId: string) =>
+  apiFetch<GoalKnowledge>(`/api/retriever/knowledge/${goalId}/topics/${topicId}`, {
+    method: "DELETE",
+  });
+
 // ─── Plans ───
 export const generatePlan = (goalId: string, window = 7) =>
   apiFetch(`/api/plans/generate?goal_id=${goalId}&window=${window}`, { method: "POST" });
@@ -100,6 +121,25 @@ export interface Topic {
   description: string;
   est_hours: number;
   prereq_ids: string[];
+  resource_refs?: string[];
+  source?: string;
+  locked_fields?: string[];
+}
+
+export interface TopicCreateRequest {
+  title: string;
+  description?: string;
+  est_hours: number;
+  prereq_ids?: string[];
+  resource_refs?: string[];
+}
+
+export interface TopicUpdateRequest {
+  title?: string;
+  description?: string;
+  est_hours?: number;
+  prereq_ids?: string[];
+  resource_refs?: string[];
 }
 
 export interface GoalKnowledge {

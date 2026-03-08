@@ -27,6 +27,8 @@ export default function AllGoalsDashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [blockActionId, setBlockActionId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
   
   const [globalBlocks, setGlobalBlocks] = useState<GlobalBlock[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -89,13 +91,22 @@ export default function AllGoalsDashboard() {
 
   // Handle Block Status changes directly from master calendar
   async function handleStatusChange(blockId: string, status: string) {
+    setBlockError(null);
+    setBlockActionId(blockId);
+    const previousBlocks = globalBlocks;
     try {
-      await updateBlockStatus(blockId, status);
-      // Optimistic internal update to avoid full reload delay
       setGlobalBlocks(prev => prev.map(b => b.block_id === blockId ? { ...b, status } : b));
+      await updateBlockStatus(blockId, status);
+      if (status === "missed" || status === "partial") {
+        await loadData();
+      }
     } catch (e) {
       console.error(e);
+      setGlobalBlocks(previousBlocks);
+      setBlockError(e instanceof Error ? e.message : "Failed to update block status.");
       await loadData(); // rollback to server truth on failure
+    } finally {
+      setBlockActionId(null);
     }
   }
 
@@ -172,6 +183,11 @@ export default function AllGoalsDashboard() {
         </div>
 
         <div className="bg-white border text-slate-800 rounded-2xl shadow-sm overflow-hidden mb-12">
+          {blockError ? (
+            <div className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {blockError}
+            </div>
+          ) : null}
           {/* Date Carousel */}
           <div className="flex items-center justify-between border-b px-2 py-2 mb-4 bg-slate-50/50">
             <button className="p-3 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition">
@@ -242,10 +258,18 @@ export default function AllGoalsDashboard() {
                     <div className="flex gap-2 shrink-0 ml-4">
                       {block.status === "scheduled" && (
                         <>
-                          <button onClick={() => handleStatusChange(block.block_id, "done")} className="p-2 text-green-600 hover:bg-green-100 rounded-full transition">
+                          <button
+                            onClick={() => handleStatusChange(block.block_id, "done")}
+                            disabled={blockActionId === block.block_id}
+                            className="p-2 text-green-600 hover:bg-green-100 rounded-full transition disabled:opacity-50"
+                          >
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
-                          <button onClick={() => handleStatusChange(block.block_id, "missed")} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition">
+                          <button
+                            onClick={() => handleStatusChange(block.block_id, "missed")}
+                            disabled={blockActionId === block.block_id}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-full transition disabled:opacity-50"
+                          >
                             <XCircle className="w-5 h-5" />
                           </button>
                         </>

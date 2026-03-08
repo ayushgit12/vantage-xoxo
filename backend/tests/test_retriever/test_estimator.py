@@ -15,13 +15,13 @@ class _FakeModel:
         return SimpleNamespace(text=self._response_text)
 
 
-  def test_estimation_prompt_formats_literal_json_example():
+def test_estimation_prompt_formats_literal_json_example():
     formatted = estimator.ESTIMATION_PROMPT.format(
-      total_chars=1234,
-      approx_pages=1,
-      video_mentions=0,
-      sample_excerpt='"example"',
-      topics_json='[{"title": "Topic A"}]',
+        total_chars=1234,
+        approx_pages=1,
+        video_mentions=0,
+        sample_excerpt='"example"',
+        topics_json='[{"title": "Topic A"}]',
     )
 
     assert '"topics": [' in formatted
@@ -78,7 +78,7 @@ async def test_structured_estimation(monkeypatch):
     """
 
     async def _fake_get_cached(key):
-      return None
+        return None
 
     async def _fake_set_cached(key, response):
         return None

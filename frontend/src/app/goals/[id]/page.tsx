@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
+  addKnowledgeTopic,
+  deleteKnowledgeTopic,
   getGoal,
   getKnowledge,
   getPlanForGoal,
@@ -11,14 +13,16 @@ import {
   syncCalendar,
   triggerIngest,
   generatePlan,
+  updateKnowledgeTopic,
   type Goal,
   type GoalKnowledge,
   type Plan,
   type MicroBlock,
+  type Topic,
 } from "@/lib/api";
 import { 
   Calendar, CheckCircle2, ChevronLeft, ChevronRight, 
-  Clock, FileText, PlayCircle, Video, AlertTriangle, XCircle 
+  Clock, FileText, Pencil, Plus, Video, AlertTriangle, XCircle, Trash2, Save
 } from "lucide-react";
 
 export default function UnifiedGoalDashboard() {
@@ -30,6 +34,17 @@ export default function UnifiedGoalDashboard() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState("");
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewDirty, setReviewDirty] = useState(false);
+  const [showAddTopicForm, setShowAddTopicForm] = useState(false);
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
+  const [blockActionId, setBlockActionId] = useState<string | null>(null);
+  const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [newTopicHours, setNewTopicHours] = useState("1");
+  const [editTitle, setEditTitle] = useState("");
+  const [editHours, setEditHours] = useState("");
   
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -57,6 +72,90 @@ export default function UnifiedGoalDashboard() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function resetReviewFeedback() {
+    setReviewMessage(null);
+    setReviewError(null);
+  }
+
+  function beginEditTopic(topic: Topic) {
+    resetReviewFeedback();
+    setEditingTopicId(topic.topic_id);
+    setEditTitle(topic.title);
+    setEditHours(String(topic.est_hours));
+  }
+
+  function cancelEditTopic() {
+    setEditingTopicId(null);
+    setEditTitle("");
+    setEditHours("");
+  }
+
+  async function handleAddTopic() {
+    if (!knowledge) return;
+
+    resetReviewFeedback();
+    setActionLoading("topic-add");
+    try {
+      const updated = await addKnowledgeTopic(goalId, {
+        title: newTopicTitle.trim(),
+        est_hours: Number(newTopicHours),
+      });
+      setKnowledge(updated);
+      setShowAddTopicForm(false);
+      setNewTopicTitle("");
+      setNewTopicHours("1");
+      setReviewDirty(true);
+      setReviewMessage("Topic added. Regenerate the plan to use the new topic mix.");
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not add topic");
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function handleUpdateTopic(topicId: string) {
+    if (!knowledge) return;
+
+    resetReviewFeedback();
+    setActionLoading(`topic-edit-${topicId}`);
+    try {
+      const updated = await updateKnowledgeTopic(goalId, topicId, {
+        title: editTitle.trim(),
+        est_hours: Number(editHours),
+      });
+      setKnowledge(updated);
+      cancelEditTopic();
+      setReviewDirty(true);
+      setReviewMessage("Topic updated. Regenerate the plan to reflect the new estimate.");
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not update topic");
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function handleDeleteTopic(topicId: string) {
+    if (!knowledge) return;
+    const confirmed = window.confirm("Delete this topic from the retriever output?");
+    if (!confirmed) return;
+
+    resetReviewFeedback();
+    setActionLoading(`topic-delete-${topicId}`);
+    try {
+      const updated = await deleteKnowledgeTopic(goalId, topicId);
+      setKnowledge(updated);
+      if (editingTopicId === topicId) {
+        cancelEditTopic();
+      }
+      setReviewDirty(true);
+      setReviewMessage("Topic removed. Regenerate the plan if you want the schedule to shrink too.");
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not delete topic");
+    } finally {
+      setActionLoading("");
     }
   }
 
@@ -103,12 +202,27 @@ export default function UnifiedGoalDashboard() {
   }
 
   async function handleStatusChange(blockId: string, status: string) {
+    if (!plan) return;
+
+    setBlockError(null);
+    setBlockActionId(blockId);
+    const previousPlan = plan;
     try {
+      setPlan({
+        ...plan,
+        micro_blocks: plan.micro_blocks.map((block) =>
+          block.block_id === blockId ? { ...block, status } : block
+        ),
+      });
       await updateBlockStatus(blockId, status);
       const updated = await getPlanForGoal(goalId);
       setPlan(updated);
     } catch (e) {
       console.error(e);
+      setPlan(previousPlan);
+      setBlockError(e instanceof Error ? e.message : "Could not update block status");
+    } finally {
+      setBlockActionId(null);
     }
   }
 
@@ -147,6 +261,22 @@ export default function UnifiedGoalDashboard() {
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
       {/* Top Banner for Drift */}
+      {reviewDirty && !isHabitGoal && (
+        <div className="bg-sky-50 border-b border-sky-200 px-6 py-3 flex justify-between items-center text-sm gap-4">
+          <div className="flex items-center text-sky-800 font-medium">
+            <AlertTriangle className="w-4 h-4 mr-2" />
+            Topics changed after retrieval. Your current plan may be stale.
+          </div>
+          <button
+            onClick={async () => { setActionLoading("plan"); await generatePlan(goalId); await loadData(); setReviewDirty(false); setActionLoading(""); }}
+            disabled={!!actionLoading}
+            className="px-4 py-1.5 bg-sky-600 text-white rounded-md font-bold text-xs hover:bg-sky-700 transition"
+          >
+            {actionLoading === "plan" ? "UPDATING..." : "REGENERATE PLAN"}
+          </button>
+        </div>
+      )}
+
       {hasDrift && (
         <div className="bg-[#fff8e6] border-b border-[#fce4a6] px-6 py-3 flex justify-between items-center text-sm">
           <div className="flex items-center text-[#9c5f14] font-medium">
@@ -258,15 +388,152 @@ export default function UnifiedGoalDashboard() {
               {/* Topics List */}
               {knowledge && (
                 <div>
-                  <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Retriever</h3>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">Retriever</h3>
+                    <button
+                      onClick={() => {
+                        resetReviewFeedback();
+                        setShowAddTopicForm((current) => !current);
+                        cancelEditTopic();
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Refine
+                    </button>
+                  </div>
+
+                  {reviewMessage ? (
+                    <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      {reviewMessage}
+                    </div>
+                  ) : null}
+                  {reviewError ? (
+                    <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {reviewError}
+                    </div>
+                  ) : null}
+                  {blockError ? (
+                    <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {blockError}
+                    </div>
+                  ) : null}
+
+                  {showAddTopicForm ? (
+                    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Add Topic</p>
+                        <input
+                          value={newTopicTitle}
+                          onChange={(e) => setNewTopicTitle(e.target.value)}
+                          placeholder="e.g. Model evaluation"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Hours</p>
+                        <input
+                          type="number"
+                          min="0.5"
+                          step="0.5"
+                          value={newTopicHours}
+                          onChange={(e) => setNewTopicHours(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAddTopic}
+                          disabled={!!actionLoading || !newTopicTitle.trim()}
+                          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          Save Topic
+                        </button>
+                        <button
+                          onClick={() => setShowAddTopicForm(false)}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <ul className="space-y-4">
                     {knowledge.topics.map(t => (
-                      <li key={t.topic_id} className="flex justify-between items-center border-b border-slate-200 border-dotted pb-2">
-                        <span className="text-sm font-medium text-slate-700 truncate pr-4" title={t.title}>{t.title}</span>
-                        <span className="text-xs text-slate-400 font-mono">{t.est_hours}h</span>
+                      <li key={t.topic_id} className="border-b border-slate-200 border-dotted pb-3">
+                        {editingTopicId === t.topic_id ? (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-3">
+                            <input
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                            />
+                            <input
+                              type="number"
+                              min="0.5"
+                              step="0.5"
+                              value={editHours}
+                              onChange={(e) => setEditHours(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleUpdateTopic(t.topic_id)}
+                                disabled={!!actionLoading || !editTitle.trim()}
+                                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                Save
+                              </button>
+                              <button
+                                onClick={cancelEditTopic}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-700 truncate pr-1" title={t.title}>{t.title}</span>
+                                {t.source === "user" ? (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                    edited
+                                  </span>
+                                ) : null}
+                              </div>
+                              <span className="text-xs text-slate-400 font-mono">{t.est_hours}h</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => beginEditTopic(t)}
+                                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                title="Edit topic"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTopic(t.topic_id)}
+                                disabled={!!actionLoading}
+                                className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                title="Delete topic"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Estimate</p>
+                    <p className="text-lg font-semibold text-slate-800">{knowledge.estimated_total_hours} hours</p>
+                  </div>
                 </div>
               )}
             </>
@@ -379,10 +646,18 @@ export default function UnifiedGoalDashboard() {
                         <div className="flex gap-2 shrink-0">
                           {block.status === "scheduled" && (
                             <>
-                              <button onClick={() => handleStatusChange(block.block_id, "done")} className="p-2 text-green-600 hover:bg-green-100 rounded-full transition">
+                              <button
+                                onClick={() => handleStatusChange(block.block_id, "done")}
+                                disabled={blockActionId === block.block_id}
+                                className="p-2 text-green-600 hover:bg-green-100 rounded-full transition disabled:opacity-50"
+                              >
                                 <CheckCircle2 className="w-5 h-5" />
                               </button>
-                              <button onClick={() => handleStatusChange(block.block_id, "missed")} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition">
+                              <button
+                                onClick={() => handleStatusChange(block.block_id, "missed")}
+                                disabled={blockActionId === block.block_id}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-full transition disabled:opacity-50"
+                              >
                                 <XCircle className="w-5 h-5" />
                               </button>
                             </>
