@@ -169,6 +169,37 @@ export default function GoalDetailPage() {
         </Link>
       )}
 
+      {/* YouTube Transcripts */}
+      {knowledge && knowledge.resource_refs && knowledge.resource_refs.filter((r) => r.source_type === "youtube" && r.transcript).length > 0 && (
+        <div className="border rounded-lg p-6 bg-white">
+          <h2 className="text-lg font-semibold mb-4">YouTube Transcripts</h2>
+          <div className="space-y-3">
+            {knowledge.resource_refs
+              .filter((r) => r.source_type === "youtube" && r.transcript)
+              .map((r) => (
+                <details key={r.ref_id} className="border rounded-lg">
+                  <summary className="p-3 cursor-pointer hover:bg-gray-50 font-medium text-sm">
+                    🎬 {r.title}
+                  </summary>
+                  <div className="p-3 pt-0">
+                    <a
+                      href={r.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-600 hover:underline text-xs"
+                    >
+                      {r.url}
+                    </a>
+                    <pre className="mt-2 text-xs text-gray-600 whitespace-pre-wrap max-h-64 overflow-y-auto bg-gray-50 p-3 rounded">
+                      {r.transcript}
+                    </pre>
+                  </div>
+                </details>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Materials */}
       <div className="border rounded-lg p-6 bg-white">
         <h2 className="text-lg font-semibold mb-2">Materials</h2>

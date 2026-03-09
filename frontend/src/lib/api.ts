@@ -88,6 +88,15 @@ export interface Topic {
   prereq_ids: string[];
 }
 
+export interface ResourceRef {
+  ref_id: string;
+  title: string;
+  url: string;
+  source_type: string;
+  description: string;
+  transcript: string;
+}
+
 export interface GoalKnowledge {
   knowledge_id: string;
   goal_id: string;
@@ -95,6 +104,7 @@ export interface GoalKnowledge {
   milestones: { title: string; topic_ids: string[] }[];
   estimated_total_hours: number;
   confidence_score: number;
+  resource_refs: ResourceRef[];
 }
 
 export interface MicroBlock {

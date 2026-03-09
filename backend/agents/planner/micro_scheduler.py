@@ -51,11 +51,17 @@ def schedule_micro_blocks(
     ))
 
     # Build a queue of (topic_id, remaining_minutes) from macro allocations
-    topic_queue: list[tuple[str, float]] = []
+    # Aggregate per-topic since macro allocator creates per-week rows
+    topic_minutes: dict[str, float] = {}
     for alloc in macro_allocations:
-        minutes = alloc.allocated_hours * 60
-        if minutes >= MIN_BLOCK_MINUTES:
-            topic_queue.append((alloc.topic_id, minutes))
+        topic_minutes[alloc.topic_id] = topic_minutes.get(alloc.topic_id, 0) + alloc.allocated_hours * 60
+
+    topic_queue: list[tuple[str, float]] = []
+    for topic_id, minutes in topic_minutes.items():
+        # Enforce minimum block size — round up small allocations
+        if minutes < MIN_BLOCK_MINUTES:
+            minutes = MIN_BLOCK_MINUTES
+        topic_queue.append((topic_id, minutes))
 
     # Map topic_id -> Topic for resource refs
     topic_map = {t.topic_id: t for t in knowledge.topics}

@@ -15,29 +15,22 @@ from agents.retriever.embeddings import cluster_chunks, find_topic_labels
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_PROMPT = """You are an expert curriculum analyzer. Given the following text chunks from learning materials for a goal, extract:
+EXTRACTION_PROMPT = """You are an expert curriculum analyzer. Given text chunks from learning materials, extract a CONCISE structured plan.
 
-1. **Topics**: A list of distinct topics/concepts to learn, each with:
-   - title: short descriptive name
-   - description: 1-2 sentence description
-   - prereq_titles: list of other topic titles that should be learned first
-
-2. **Milestones**: Logical checkpoints in the learning journey, each with:
-   - title: milestone name
-   - description: what the learner should be able to do
-   - topic_titles: which topics this milestone covers
-
-3. **Confidence**: A score from 0.0 to 1.0 indicating how well the materials cover the goal.
+Rules:
+- Return 4-8 topics MAX. Merge related sub-topics into broader ones.
+- Keep descriptions to ONE sentence each.
+- Keep the ENTIRE response under 1500 characters.
 
 Goal: {goal_title} (Category: {goal_category})
 
-Respond with valid JSON only (no markdown, no code blocks):
+Return valid JSON only:
 {{
   "topics": [
-    {{"title": "...", "description": "...", "prereq_titles": ["..."]}}
+    {{"title": "short name", "description": "one sentence", "prereq_titles": []}}
   ],
   "milestones": [
-    {{"title": "...", "description": "...", "topic_titles": ["..."]}}
+    {{"title": "name", "description": "one sentence", "topic_titles": ["..."]}}
   ],
   "confidence": 0.8
 }}
@@ -125,38 +118,81 @@ async def extract_topics_and_milestones(
             goal_category=goal_category,
         )
 
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
-            temperature=0.0,
-            max_output_tokens=4000,
-            response_mime_type="application/json",
-        ),
-    )
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=8192,
+                response_mime_type="application/json",
+            ),
+        )
+    except Exception as e:
+        logger.warning("Gemini API call failed: %s; falling back to embeddings", e)
+        return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
+
+    # Some responses may be blocked or empty
+    if not response.parts:
+        logger.warning("Gemini returned empty response (possibly blocked); falling back to embeddings")
+        return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
 
     result_text = response.text.strip()
+    logger.debug("Gemini raw response (first 500 chars): %s", result_text[:500])
+
     # Strip markdown code blocks if present
-    if result_text.startswith("```"):
-        result_text = result_text.split("\n", 1)[1]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
-        result_text = result_text.strip()
+    import re
+    result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
+    result_text = re.sub(r"\n?```\s*$", "", result_text)
+    result_text = result_text.strip()
 
     try:
         result = json.loads(result_text)
-    except json.JSONDecodeError:
-        # Try to fix common issues: trailing commas, single quotes
-        import re
-        fixed = re.sub(r",\s*([}\]])", r"\1", result_text)  # remove trailing commas
+    except json.JSONDecodeError as e:
+        # Fix trailing commas
+        fixed = re.sub(r",\s*([}\]])", r"\1", result_text)
+        # If truncated (cut off mid-JSON), try to close it
+        if response.candidates and response.candidates[0].finish_reason.name == "MAX_TOKENS":
+            logger.warning("Gemini response truncated (MAX_TOKENS); attempting repair")
+            fixed = _repair_truncated_json(fixed)
         try:
             result = json.loads(fixed)
         except json.JSONDecodeError:
-            logger.warning("Gemini returned unparseable JSON; falling back to embeddings")
+            # Try extracting just the JSON object
+            match = re.search(r"\{.*\}", fixed, re.DOTALL)
+            if match:
+                try:
+                    result = json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    logger.info("Recovered JSON via regex extraction")
+                    await set_cached(cache_key, result)
+                    return result
+            logger.warning("Gemini returned unparseable JSON; raw (first 300): %s", result_text[:300])
             return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
 
     await set_cached(cache_key, result)
     logger.info("Extracted %d topics for %s via Gemini", len(result.get("topics", [])), goal_title)
     return result
+
+
+def _repair_truncated_json(text: str) -> str:
+    """Attempt to close truncated JSON by balancing brackets/braces."""
+    # Remove any trailing incomplete key-value pair
+    import re
+    # Strip trailing incomplete object like:  {  or  { "title":
+    text = re.sub(r',?\s*\{[^}]*$', '', text)
+    # Strip trailing incomplete string value
+    text = re.sub(r',?\s*"[^"]*$', '', text)
+
+    # Count unmatched brackets
+    opens = text.count('{') - text.count('}')
+    open_arr = text.count('[') - text.count(']')
+
+    # Close them
+    text += ']' * max(0, open_arr)
+    text += '}' * max(0, opens)
+    return text
 
 
 def _embedding_extraction(

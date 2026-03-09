@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   getPlanForGoal,
+  getKnowledge,
   updateBlockStatus,
   syncCalendar,
   type Plan,
   type MicroBlock,
+  type GoalKnowledge,
 } from "@/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -22,19 +24,36 @@ export default function PlanPage() {
   const params = useParams();
   const goalId = params.id as string;
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [topicMap, setTopicMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPlanForGoal(goalId)
-      .then(setPlan)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const [p, k] = await Promise.all([
+          getPlanForGoal(goalId),
+          getKnowledge(goalId).catch(() => null),
+        ]);
+        setPlan(p);
+        if (k) {
+          const map: Record<string, string> = {};
+          k.topics.forEach((t) => {
+            map[t.topic_id] = t.title;
+          });
+          setTopicMap(map);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, [goalId]);
 
   async function handleStatusChange(blockId: string, status: string) {
     try {
       await updateBlockStatus(blockId, status);
-      // Reload plan after status update
       const updated = await getPlanForGoal(goalId);
       setPlan(updated);
     } catch (e) {
@@ -48,7 +67,11 @@ export default function PlanPage() {
   // Group blocks by date
   const blocksByDate = plan.micro_blocks.reduce(
     (acc, block) => {
-      const date = new Date(block.start_dt).toLocaleDateString();
+      const date = new Date(block.start_dt).toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
       if (!acc[date]) acc[date] = [];
       acc[date].push(block);
       return acc;
@@ -67,8 +90,8 @@ export default function PlanPage() {
         <div>
           <h1 className="text-2xl font-bold">Study Plan</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {plan.micro_blocks.length} blocks · {Math.round(totalMin / 60)}h total ·{" "}
-            {Math.round(doneMin / 60)}h done
+            {plan.micro_blocks.length} blocks · {(totalMin / 60).toFixed(1)}h total ·{" "}
+            {(doneMin / 60).toFixed(1)}h done
           </p>
         </div>
         <div className="w-48 bg-gray-200 rounded-full h-3">
@@ -89,58 +112,66 @@ export default function PlanPage() {
         <div key={date}>
           <h2 className="font-semibold text-sm text-gray-500 mb-2">{date}</h2>
           <div className="space-y-2">
-            {blocks.map((block) => (
-              <div
-                key={block.block_id}
-                className={`p-3 border rounded-lg flex items-center justify-between ${
-                  STATUS_COLORS[block.status] || ""
-                }`}
-              >
-                <div>
-                  <span className="font-medium text-sm">
-                    {new Date(block.start_dt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  <span className="text-gray-500 text-sm ml-2">
-                    {block.duration_min} min
-                  </span>
-                  <span className="text-xs text-gray-400 ml-2">
-                    Topic: {block.topic_id.slice(0, 8)}…
-                  </span>
+            {blocks.map((block) => {
+              const topicName = topicMap[block.topic_id] || block.topic_id.slice(0, 8);
+              const startTime = new Date(block.start_dt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              const endTime = new Date(
+                new Date(block.start_dt).getTime() + block.duration_min * 60000
+              ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+              return (
+                <div
+                  key={block.block_id}
+                  className={`p-4 border rounded-lg flex items-center justify-between ${
+                    STATUS_COLORS[block.status] || ""
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm font-mono text-gray-600 w-28">
+                      {startTime} – {endTime}
+                    </div>
+                    <div>
+                      <span className="font-medium text-sm">{topicName}</span>
+                      <span className="text-gray-400 text-xs ml-2">
+                        {block.duration_min} min
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {block.status === "scheduled" && (
+                      <>
+                        <button
+                          onClick={() => handleStatusChange(block.block_id, "done")}
+                          className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                        >
+                          Done
+                        </button>
+                        <button
+                          onClick={() => handleStatusChange(block.block_id, "partial")}
+                          className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                        >
+                          Partial
+                        </button>
+                        <button
+                          onClick={() => handleStatusChange(block.block_id, "missed")}
+                          className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          Missed
+                        </button>
+                      </>
+                    )}
+                    {block.status !== "scheduled" && (
+                      <span className="px-2 py-1 text-xs rounded bg-gray-100 capitalize">
+                        {block.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  {block.status === "scheduled" && (
-                    <>
-                      <button
-                        onClick={() => handleStatusChange(block.block_id, "done")}
-                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Done
-                      </button>
-                      <button
-                        onClick={() => handleStatusChange(block.block_id, "partial")}
-                        className="px-2 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                      >
-                        Partial
-                      </button>
-                      <button
-                        onClick={() => handleStatusChange(block.block_id, "missed")}
-                        className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                      >
-                        Missed
-                      </button>
-                    </>
-                  )}
-                  {block.status !== "scheduled" && (
-                    <span className="px-2 py-1 text-xs rounded bg-gray-100 capitalize">
-                      {block.status}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
