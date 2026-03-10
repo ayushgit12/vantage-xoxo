@@ -91,15 +91,26 @@ def compute_macro_allocations(
         if remaining_per_topic.get(topic.topic_id, 0.0) <= 0.0:
             covered_in_window.add(topic.topic_id)
 
-    # Multi-pass: each pass finds all eligible topics and splits budget
-    # proportionally among them.  Fully-covered topics unlock dependents
-    # for the next pass.  Stops when budget exhausted or no new eligible.
-    MAX_PASSES = len(ordered_topics)  # upper bound
+    def _prereq_ready(pid: str) -> bool:
+        """A prereq is ready if done, fully allocated, or has meaningful allocation."""
+        if pid in covered_in_window:
+            return True
+        remaining = remaining_per_topic.get(pid, 0.0)
+        if remaining <= 0.0:
+            return True
+        allocated = alloc_map.get(pid, 0.0)
+        # Once ≥30% is allocated in this window, consider it started enough
+        # for downstream topics to begin (interleaved practice).
+        return allocated >= remaining * 0.3
+
+    # Multi-pass: each pass finds all eligible topics, caps per-topic allocation
+    # to ensure variety, and cascades unlocks to downstream topics.
+    MAX_PASSES = len(ordered_topics)
+    prev_eligible_ids: set[str] = set()
     for _ in range(MAX_PASSES):
         if budget < 0.05:
             break
 
-        # Gather eligible topics: prereqs met, still needs hours, not yet fully allocated.
         eligible: list = []
         for topic in ordered_topics:
             if topic.topic_id in covered_in_window:
@@ -110,32 +121,35 @@ def compute_macro_allocations(
             if need <= 0.01:
                 covered_in_window.add(topic.topic_id)
                 continue
-            prereqs_met = all(
-                pid in covered_in_window for pid in topic.prereq_ids
-            )
-            if not prereqs_met:
-                continue
-            eligible.append((topic, need))
+            if all(_prereq_ready(pid) for pid in topic.prereq_ids):
+                eligible.append((topic, need))
 
         if not eligible:
             break
 
-        # Proportional split of remaining budget among eligible topics.
-        total_need = sum(need for _, need in eligible)
-        newly_covered = False
+        # Stop if no new topics became eligible compared to the last pass.
+        current_ids = {t.topic_id for t, _ in eligible}
+        if current_ids == prev_eligible_ids:
+            break
+        prev_eligible_ids = current_ids
+
+        # Sort smallest-need first to maximize the number of fully-covered topics.
+        eligible.sort(key=lambda tn: tn[1])
+
+        # Cap per-topic allocation to spread budget across at least 3 topics
+        # (interleaved practice) while still allowing small topics to finish.
+        per_topic_cap = max(budget / max(len(eligible), 3), 1.0)
+
         for topic, need in eligible:
-            share = budget * (need / total_need) if total_need > 0 else budget / len(eligible)
-            alloc = min(need, share)
+            if budget < 0.05:
+                break
+            alloc = min(need, budget, per_topic_cap)
             if alloc < 0.01:
                 continue
             alloc_map[topic.topic_id] = alloc_map.get(topic.topic_id, 0.0) + alloc
             budget -= alloc
             if alloc >= need - 0.01:
                 covered_in_window.add(topic.topic_id)
-                newly_covered = True
-
-        if not newly_covered:
-            break  # no new topics unlocked and budget spread — done
 
     # Convert accumulated allocations to MacroAllocation objects.
     for topic in ordered_topics:

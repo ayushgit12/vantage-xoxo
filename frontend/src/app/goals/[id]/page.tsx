@@ -258,15 +258,15 @@ export default function UnifiedGoalDashboard() {
     return `${days} at ${start} for ${duration} min`;
   }
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading dashboard...</div>;
-  if (!goal) return <div className="p-8 text-center text-red-500">Goal not found</div>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading dashboard...</div>;
+  if (!goal) return <div className="p-8 text-center text-red-400">Goal not found</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50/50 pb-20">
+    <div className="min-h-screen pb-20">
       {/* Top Banner for Drift */}
       {reviewDirty && !isHabitGoal && (
-        <div className="bg-sky-50 border-b border-sky-200 px-6 py-3 flex justify-between items-center text-sm gap-4">
-          <div className="flex items-center text-sky-800 font-medium">
+        <div className="bg-sky-500/10 border-b border-sky-500/20 px-6 py-3 flex justify-between items-center text-sm gap-4">
+          <div className="flex items-center text-sky-300 font-medium">
             <AlertTriangle className="w-4 h-4 mr-2" />
             Topics changed after retrieval. Your current plan may be stale.
           </div>
@@ -277,7 +277,7 @@ export default function UnifiedGoalDashboard() {
               setReviewDirty(false);
             })}
             disabled={!!actionLoading}
-            className="px-4 py-1.5 bg-sky-600 text-white rounded-md font-bold text-xs hover:bg-sky-700 transition"
+            className="px-4 py-1.5 bg-sky-500 text-white rounded-md font-bold text-xs hover:bg-sky-400 transition"
           >
             {actionLoading === "plan" ? "UPDATING..." : "REGENERATE PLAN"}
           </button>
@@ -285,15 +285,15 @@ export default function UnifiedGoalDashboard() {
       )}
 
       {hasDrift && (
-        <div className="bg-[#fff8e6] border-b border-[#fce4a6] px-6 py-3 flex justify-between items-center text-sm">
-          <div className="flex items-center text-[#9c5f14] font-medium">
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-3 flex justify-between items-center text-sm">
+          <div className="flex items-center text-amber-300 font-medium">
             <AlertTriangle className="w-4 h-4 mr-2" />
             Schedule drift detected. Replan recommended to stay on track.
           </div>
           <button 
             onClick={handleReplan}
             disabled={!!actionLoading}
-            className="px-4 py-1.5 bg-[#fce4a6] text-[#9c5f14] rounded-md font-bold text-xs hover:bg-[#fae096] transition"
+            className="px-4 py-1.5 bg-amber-500/20 text-amber-300 rounded-md font-bold text-xs hover:bg-amber-500/30 transition"
           >
             {actionLoading === "replan" ? "REPLANNING..." : "REPLAN NOW"}
           </button>
@@ -303,15 +303,15 @@ export default function UnifiedGoalDashboard() {
       {/* Main Header */}
       <div className="max-w-6xl mx-auto px-6 pt-10 pb-6 flex justify-between items-end">
         <div>
-          <h1 className="text-4xl italic font-serif text-slate-800 tracking-tight leading-tight mb-2">
+          <h1 className="text-4xl italic font-serif text-cyan-50 tracking-tight leading-tight mb-2">
             {goal.title}
           </h1>
-          <div className="flex items-center text-slate-500 text-sm font-medium tracking-wider">
+          <div className="flex items-center text-slate-400 text-sm font-medium tracking-wider">
             <Clock className="w-4 h-4 mr-1.5" />
             {daysLeft} DAYS LEFT
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-700">{goal.status}</span>
+            <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-slate-300">{goal.status}</span>
             {plan ? <span>{progressPercent}% complete</span> : null}
             {partialTopicIds.size > 0 ? <span>{partialTopicIds.size} topic{partialTopicIds.size !== 1 ? "s" : ""} in progress</span> : null}
           </div>
@@ -319,7 +319,7 @@ export default function UnifiedGoalDashboard() {
         
         {/* Actions - typically in a navbar, but placed here for MVP */}
         <div className="flex gap-3">
-          <Link href={`/goals/${goalId}/edit`} className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">
+          <Link href={`/goals/${goalId}/edit`} className="px-5 py-2.5 text-sm font-medium text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] rounded-lg transition">
             Edit Goal
           </Link>
           {goal.status !== "completed" ? (
@@ -329,7 +329,7 @@ export default function UnifiedGoalDashboard() {
                 await loadData();
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition"
+              className="px-5 py-2.5 text-sm font-medium text-emerald-400 bg-emerald-500/10 rounded-lg hover:bg-emerald-500/20 transition"
             >
               {actionLoading === "complete" ? "Saving..." : "Mark Complete"}
             </button>
@@ -342,7 +342,7 @@ export default function UnifiedGoalDashboard() {
                   await loadData();
                 })}
                 disabled={!!actionLoading}
-                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
+                className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
               >
                 {actionLoading === "plan" ? (
                   <>
@@ -357,7 +357,7 @@ export default function UnifiedGoalDashboard() {
                   await syncCalendar(plan.plan_id);
                 })}
                 disabled={!!actionLoading}
-                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
+                className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
               >
                 {actionLoading === "sync" ? (
                   <>
@@ -379,7 +379,7 @@ export default function UnifiedGoalDashboard() {
                 await loadData();
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
             >
               {actionLoading === "ingest" ? (
                 <>
@@ -395,7 +395,7 @@ export default function UnifiedGoalDashboard() {
                 await loadData();
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
             >
               {actionLoading === "plan" ? (
                 <>
@@ -410,7 +410,7 @@ export default function UnifiedGoalDashboard() {
                 await syncCalendar(plan.plan_id);
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
             >
               {actionLoading === "sync" ? (
                 <>
@@ -435,31 +435,31 @@ export default function UnifiedGoalDashboard() {
         <div className="md:col-span-3 space-y-10">
           {isHabitGoal ? (
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Routine</h3>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">Routine</h3>
+              <div className="glass-card p-4 space-y-3">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Schedule</p>
-                  <p className="text-sm text-slate-700">{formatScheduleSummary()}</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Schedule</p>
+                  <p className="text-sm text-cyan-100">{formatScheduleSummary()}</p>
                 </div>
                 {goal.target_weekly_effort ? (
                   <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Weekly Effort</p>
-                    <p className="text-sm text-slate-700">{goal.target_weekly_effort} hrs / week</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Weekly Effort</p>
+                    <p className="text-sm text-cyan-100">{goal.target_weekly_effort} hrs / week</p>
                   </div>
                 ) : null}
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Tracking</p>
-                  <p className="text-sm text-slate-700">This habit skips material parsing and goes straight to routine scheduling.</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tracking</p>
+                  <p className="text-sm text-cyan-100">This habit skips material parsing and goes straight to routine scheduling.</p>
                 </div>
               </div>
             </div>
           ) : (
             <>
               {plan ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Progress</p>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-brand-600" style={{ width: `${progressPercent}%` }} />
+                <div className="glass-card p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Progress</p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500" style={{ width: `${progressPercent}%` }} />
                   </div>
                   <div className="mt-1 text-[11px] text-slate-400">
                     {Math.round(doneMinutes / 60 * 10) / 10}h done
@@ -468,15 +468,15 @@ export default function UnifiedGoalDashboard() {
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
                     <div>
-                      <p className="text-lg font-semibold text-slate-900">{completedTopicIds.size}</p>
+                      <p className="text-lg font-semibold text-cyan-50">{completedTopicIds.size}</p>
                       <p>Topics done</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-amber-600">{partialTopicIds.size}</p>
+                      <p className="text-lg font-semibold text-amber-400">{partialTopicIds.size}</p>
                       <p>In progress</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-slate-900">{topicIds.length}</p>
+                      <p className="text-lg font-semibold text-cyan-50">{topicIds.length}</p>
                       <p>Topics total</p>
                     </div>
                   </div>
@@ -487,14 +487,14 @@ export default function UnifiedGoalDashboard() {
               {knowledge && (
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">Retriever</h3>
+                    <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase">Retriever</h3>
                     <button
                       onClick={() => {
                         resetReviewFeedback();
                         setShowAddTopicForm((current) => !current);
                         cancelEditTopic();
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 hover:bg-white/[0.06]"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Refine
@@ -502,30 +502,30 @@ export default function UnifiedGoalDashboard() {
                   </div>
 
                   {reviewMessage ? (
-                    <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    <div className="mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
                       {reviewMessage}
                     </div>
                   ) : null}
                   {reviewError ? (
-                    <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                       {reviewError}
                     </div>
                   ) : null}
                   {blockError ? (
-                    <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                       {blockError}
                     </div>
                   ) : null}
 
                   {showAddTopicForm ? (
-                    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                    <div className="mb-4 glass-card p-4 space-y-3">
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Add Topic</p>
                         <input
                           value={newTopicTitle}
                           onChange={(e) => setNewTopicTitle(e.target.value)}
                           placeholder="e.g. Model evaluation"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                          className="dark-input"
                         />
                       </div>
                       <div>
@@ -536,21 +536,21 @@ export default function UnifiedGoalDashboard() {
                           step="0.5"
                           value={newTopicHours}
                           onChange={(e) => setNewTopicHours(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                          className="dark-input"
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={handleAddTopic}
                           disabled={!!actionLoading || !newTopicTitle.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
                         >
                           <Save className="w-3.5 h-3.5" />
                           Save Topic
                         </button>
                         <button
                           onClick={() => setShowAddTopicForm(false)}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]"
                         >
                           Cancel
                         </button>
@@ -560,13 +560,13 @@ export default function UnifiedGoalDashboard() {
 
                   <ul className="space-y-4">
                     {knowledge.topics.map(t => (
-                      <li key={t.topic_id} className="border-b border-slate-200 border-dotted pb-3">
+                      <li key={t.topic_id} className="border-b border-white/[0.06] border-dotted pb-3">
                         {editingTopicId === t.topic_id ? (
-                          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-3">
+                          <div className="glass-card p-3 space-y-3">
                             <input
                               value={editTitle}
                               onChange={(e) => setEditTitle(e.target.value)}
-                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                              className="dark-input"
                             />
                             <input
                               type="number"
@@ -574,20 +574,20 @@ export default function UnifiedGoalDashboard() {
                               step="0.5"
                               value={editHours}
                               onChange={(e) => setEditHours(e.target.value)}
-                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                              className="dark-input"
                             />
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleUpdateTopic(t.topic_id)}
                                 disabled={!!actionLoading || !editTitle.trim()}
-                                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
                               >
                                 <Save className="w-3.5 h-3.5" />
                                 Save
                               </button>
                               <button
                                 onClick={cancelEditTopic}
-                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/[0.04]"
                               >
                                 Cancel
                               </button>
@@ -597,27 +597,27 @@ export default function UnifiedGoalDashboard() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-slate-700 truncate pr-1" title={t.title}>{t.title}</span>
+                                <span className="text-sm font-medium text-cyan-100 truncate pr-1" title={t.title}>{t.title}</span>
                                 {completedTopicIds.has(t.topic_id) ? (
-                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                                     done
                                   </span>
                                 ) : partialTopicIds.has(t.topic_id) ? (
-                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
                                     in progress
                                   </span>
                                 ) : t.source === "user" ? (
-                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
                                     edited
                                   </span>
                                 ) : null}
                               </div>
-                              <span className="text-xs text-slate-400 font-mono">{t.est_hours}h</span>
+                              <span className="text-xs text-slate-500 font-mono">{t.est_hours}h</span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => beginEditTopic(t)}
-                                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                className="rounded-lg p-2 text-slate-500 hover:bg-white/[0.04] hover:text-cyan-300"
                                 title="Edit topic"
                               >
                                 <Pencil className="w-4 h-4" />
@@ -625,7 +625,7 @@ export default function UnifiedGoalDashboard() {
                               <button
                                 onClick={() => handleDeleteTopic(t.topic_id)}
                                 disabled={!!actionLoading}
-                                className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                className="rounded-lg p-2 text-slate-500 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
                                 title="Delete topic"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -636,9 +636,9 @@ export default function UnifiedGoalDashboard() {
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Estimate</p>
-                    <p className="text-lg font-semibold text-slate-800">{knowledge.estimated_total_hours} hours</p>
+                  <div className="mt-4 glass-card p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Estimate</p>
+                    <p className="text-lg font-semibold text-cyan-50">{knowledge.estimated_total_hours} hours</p>
                   </div>
                 </div>
               )}
@@ -648,29 +648,29 @@ export default function UnifiedGoalDashboard() {
           {/* Sources */}
           {!isHabitGoal && (goal.uploaded_file_ids.length > 0 || goal.material_urls.length > 0) ? (
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase mb-4">Sources</h3>
+              <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">Sources</h3>
               <div className="space-y-3">
                 {goal.uploaded_file_ids.map((file, i) => (
-                  <div key={i} className="flex items-center p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
-                    <div className="w-8 h-8 rounded bg-red-50 text-red-500 flex items-center justify-center mr-3 shrink-0">
+                  <div key={i} className="flex items-center p-3 glass-card">
+                    <div className="w-8 h-8 rounded bg-red-500/10 text-red-400 flex items-center justify-center mr-3 shrink-0">
                       <FileText className="w-4 h-4" />
                     </div>
                     <div className="overflow-hidden">
-                      <p className="text-xs font-semibold text-slate-700 truncate">{file.split('/').pop()}</p>
-                      <p className="text-[10px] text-slate-400">Uploaded PDF</p>
+                      <p className="text-xs font-semibold text-cyan-100 truncate">{file.split('/').pop()}</p>
+                      <p className="text-[10px] text-slate-500">Uploaded PDF</p>
                     </div>
                   </div>
                 ))}
                 {goal.material_urls.map((url, i) => {
                   const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
                   return (
-                    <div key={i} className="flex items-center p-3 border border-slate-200 rounded-xl bg-white shadow-sm">
-                      <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${isYoutube ? 'bg-blue-50 text-blue-500' : 'bg-slate-100 text-slate-500'}`}>
+                    <div key={i} className="flex items-center p-3 glass-card">
+                      <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${isYoutube ? 'bg-blue-500/10 text-blue-400' : 'bg-white/[0.04] text-slate-400'}`}>
                         {isYoutube ? <Video className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                       </div>
                       <div className="overflow-hidden">
-                        <p className="text-xs font-semibold text-slate-700 truncate">{new URL(url).hostname}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{url}</p>
+                        <p className="text-xs font-semibold text-cyan-100 truncate">{new URL(url).hostname}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{url}</p>
                       </div>
                     </div>
                   );
@@ -702,14 +702,14 @@ export default function UnifiedGoalDashboard() {
 
             // Topic color palette
             const TOPIC_COLORS = [
-              { bg: "bg-blue-100", border: "border-blue-300", text: "text-blue-800", accent: "bg-blue-500" },
-              { bg: "bg-emerald-100", border: "border-emerald-300", text: "text-emerald-800", accent: "bg-emerald-500" },
-              { bg: "bg-violet-100", border: "border-violet-300", text: "text-violet-800", accent: "bg-violet-500" },
-              { bg: "bg-amber-100", border: "border-amber-300", text: "text-amber-800", accent: "bg-amber-500" },
-              { bg: "bg-rose-100", border: "border-rose-300", text: "text-rose-800", accent: "bg-rose-500" },
-              { bg: "bg-cyan-100", border: "border-cyan-300", text: "text-cyan-800", accent: "bg-cyan-500" },
-              { bg: "bg-pink-100", border: "border-pink-300", text: "text-pink-800", accent: "bg-pink-500" },
-              { bg: "bg-indigo-100", border: "border-indigo-300", text: "text-indigo-800", accent: "bg-indigo-500" },
+              { bg: "bg-blue-500/15", border: "border-blue-500/30", text: "text-blue-200", accent: "bg-blue-400" },
+              { bg: "bg-emerald-500/15", border: "border-emerald-500/30", text: "text-emerald-200", accent: "bg-emerald-400" },
+              { bg: "bg-violet-500/15", border: "border-violet-500/30", text: "text-violet-200", accent: "bg-violet-400" },
+              { bg: "bg-amber-500/15", border: "border-amber-500/30", text: "text-amber-200", accent: "bg-amber-400" },
+              { bg: "bg-rose-500/15", border: "border-rose-500/30", text: "text-rose-200", accent: "bg-rose-400" },
+              { bg: "bg-cyan-500/15", border: "border-cyan-500/30", text: "text-cyan-200", accent: "bg-cyan-400" },
+              { bg: "bg-pink-500/15", border: "border-pink-500/30", text: "text-pink-200", accent: "bg-pink-400" },
+              { bg: "bg-indigo-500/15", border: "border-indigo-500/30", text: "text-indigo-200", accent: "bg-indigo-400" },
             ];
             const topicColorMap: Record<string, typeof TOPIC_COLORS[0]> = {};
             let colorIdx = 0;
@@ -723,8 +723,8 @@ export default function UnifiedGoalDashboard() {
             const ROW_HEIGHT = 60; // pixels per hour
 
             return (
-              <div className="bg-white border text-slate-800 rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b flex items-center justify-between">
+              <div className="glass-card overflow-hidden">
+                <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
                   <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Weekly Schedule</h3>
                   {/* Legend */}
                   <div className="flex flex-wrap gap-3">
@@ -750,15 +750,15 @@ export default function UnifiedGoalDashboard() {
                 <div className="overflow-x-auto">
                   <div className="min-w-[700px]">
                     {/* Day Headers */}
-                    <div className="grid border-b" style={{ gridTemplateColumns: "56px repeat(" + availableDates.length + ", 1fr)" }}>
-                      <div className="border-r border-slate-100" />
+                    <div className="grid border-b border-white/[0.06]" style={{ gridTemplateColumns: "56px repeat(" + availableDates.length + ", 1fr)" }}>
+                      <div className="border-r border-white/[0.04]" />
                       {availableDates.map(dateStr => {
                         const { dayOfWeek, dayOfMonth } = formatDateHeader(dateStr);
                         const isToday = dateStr === getLocalDateKey(new Date());
                         return (
-                          <div key={dateStr} className={`text-center py-3 border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-brand-50' : ''}`}>
-                            <div className="text-[10px] font-bold text-slate-400 tracking-widest">{dayOfWeek}</div>
-                            <div className={`text-lg font-bold ${isToday ? 'text-brand-600' : 'text-slate-700'}`}>{dayOfMonth}</div>
+                          <div key={dateStr} className={`text-center py-3 border-r border-white/[0.04] last:border-r-0 ${isToday ? 'bg-cyan-500/[0.06]' : ''}`}>
+                            <div className="text-[10px] font-bold text-slate-500 tracking-widest">{dayOfWeek}</div>
+                            <div className={`text-lg font-bold ${isToday ? 'text-cyan-400' : 'text-cyan-100'}`}>{dayOfMonth}</div>
                           </div>
                         );
                       })}
@@ -771,10 +771,10 @@ export default function UnifiedGoalDashboard() {
                         {hourSlots.map((hour) => (
                           <div
                             key={hour}
-                            className="absolute w-full border-b border-slate-100 flex items-start justify-end pr-2 pt-0.5"
+                            className="absolute w-full border-b border-white/[0.04] flex items-start justify-end pr-2 pt-0.5"
                             style={{ top: (hour - gridStartHour) * ROW_HEIGHT, height: ROW_HEIGHT }}
                           >
-                            <span className="text-[10px] font-mono text-slate-400">{String(hour).padStart(2, "0")}:00</span>
+                            <span className="text-[10px] font-mono text-slate-600">{String(hour).padStart(2, "0")}:00</span>
                           </div>
                         ))}
                       </div>
@@ -786,14 +786,14 @@ export default function UnifiedGoalDashboard() {
                         return (
                           <div
                             key={dateStr}
-                            className={`relative border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-brand-50/30' : ''}`}
+                            className={`relative border-r border-white/[0.04] last:border-r-0 ${isToday ? 'bg-cyan-500/[0.03]' : ''}`}
                             style={{ height: hourSlots.length * ROW_HEIGHT }}
                           >
                             {/* Hour gridlines */}
                             {hourSlots.map((hour) => (
                               <div
                                 key={hour}
-                                className="absolute w-full border-b border-slate-100"
+                                className="absolute w-full border-b border-white/[0.04]"
                                 style={{ top: (hour - gridStartHour) * ROW_HEIGHT, height: ROW_HEIGHT }}
                               />
                             ))}
@@ -830,9 +830,9 @@ export default function UnifiedGoalDashboard() {
                                     </div>
                                     {/* Status indicator */}
                                     <div className="shrink-0 mt-0.5">
-                                      {isDone && <CheckCircle2 className="w-3 h-3 text-green-600" />}
-                                      {isPartial && <Clock className="w-3 h-3 text-amber-600" />}
-                                      {isMissed && <AlertTriangle className="w-3 h-3 text-red-500" />}
+                                      {isDone && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                                      {isPartial && <Clock className="w-3 h-3 text-amber-400" />}
+                                      {isMissed && <AlertTriangle className="w-3 h-3 text-red-400" />}
                                     </div>
                                   </div>
 
@@ -842,21 +842,21 @@ export default function UnifiedGoalDashboard() {
                                       <button
                                         onClick={() => handleStatusChange(block.block_id, "done")}
                                         disabled={blockActionId === block.block_id}
-                                        className="p-0.5 rounded bg-green-200 text-green-700 hover:bg-green-300 transition disabled:opacity-50"
+                                        className="p-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 transition disabled:opacity-50"
                                       >
                                         <CheckCircle2 className="w-3 h-3" />
                                       </button>
                                       <button
                                         onClick={() => handleStatusChange(block.block_id, "partial")}
                                         disabled={blockActionId === block.block_id}
-                                        className="p-0.5 rounded bg-amber-200 text-amber-700 hover:bg-amber-300 transition disabled:opacity-50"
+                                        className="p-0.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition disabled:opacity-50"
                                       >
                                         <Clock className="w-3 h-3" />
                                       </button>
                                       <button
                                         onClick={() => handleStatusChange(block.block_id, "missed")}
                                         disabled={blockActionId === block.block_id}
-                                        className="p-0.5 rounded bg-red-200 text-red-700 hover:bg-red-300 transition disabled:opacity-50"
+                                        className="p-0.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-50"
                                       >
                                         <XCircle className="w-3 h-3" />
                                       </button>
@@ -893,14 +893,14 @@ export default function UnifiedGoalDashboard() {
 
                 {/* Block status list for small blocks / mobile fallback */}
                 {blockError && (
-                  <div className="mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <div className="mx-6 mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                     {blockError}
                   </div>
                 )}
               </div>
             );
           })() : (
-            <div className="h-64 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400">
+            <div className="h-64 border-2 border-dashed border-white/[0.08] rounded-2xl flex items-center justify-center text-slate-500">
               {isHabitGoal ? "Generate a routine to see your schedule" : "Generate a plan to see your timeline"}
             </div>
           )}

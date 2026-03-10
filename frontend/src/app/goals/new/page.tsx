@@ -88,28 +88,28 @@ export default function NewGoalPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Describe Your Goal Scenario</h1>
+    <div className="max-w-2xl mx-auto px-6 py-8">
+      <h1 className="text-2xl font-bold mb-6 text-cyan-50">Describe Your Goal Scenario</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5 glass-card p-6">
         <div>
-          <label className="block text-sm font-medium mb-1">Scenario</label>
+          <label className="block text-sm font-medium mb-1 text-cyan-100">Scenario</label>
           <textarea
             name="scenario"
             required
             rows={4}
-            className="w-full border rounded-lg px-3 py-2"
+            className="dark-input"
             placeholder="e.g., I want to do 20 pushups daily before breakfast and stay consistent for 3 months."
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             The model auto-detects goal type and creates structured data.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2">
-            <label className="block text-sm font-medium mb-1">Priority</label>
-            <select name="priority" className="w-full border rounded-lg px-3 py-2">
+            <label className="block text-sm font-medium mb-1 text-cyan-100">Priority</label>
+            <select name="priority" className="dark-select">
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
@@ -119,28 +119,28 @@ export default function NewGoalPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Deadline (optional for habits)</label>
-            <input name="deadline" type="date" className="w-full border rounded-lg px-3 py-2" />
+            <label className="block text-sm font-medium mb-1 text-cyan-100">Deadline (optional for habits)</label>
+            <input name="deadline" type="date" className="dark-input" />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Weekly Hours (optional)</label>
-            <input name="weekly_hours" type="number" step="0.5" min="0.5" max="80" className="w-full border rounded-lg px-3 py-2" placeholder="e.g., 10" />
+            <label className="block text-sm font-medium mb-1 text-cyan-100">Weekly Hours (optional)</label>
+            <input name="weekly_hours" type="number" step="0.5" min="0.5" max="80" className="dark-input" placeholder="e.g., 10" />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Material URLs (one per line)</label>
+          <label className="block text-sm font-medium mb-1 text-cyan-100">Material URLs (one per line)</label>
           <textarea
             name="urls"
             rows={4}
-            className="w-full border rounded-lg px-3 py-2 font-mono text-sm"
+            className="dark-input font-mono text-sm"
             placeholder={"https://youtube.com/playlist?list=...\nhttps://github.com/user/repo\nhttps://example.com/syllabus.html"}
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <input type="checkbox" name="user_materials_only" id="umo" />
-          <label htmlFor="umo" className="text-sm">
+          <input type="checkbox" name="user_materials_only" id="umo" className="accent-cyan-500" />
+          <label htmlFor="umo" className="text-sm text-cyan-100">
             Use only my uploaded materials (no web supplementation)
           </label>
         </div>
@@ -148,27 +148,27 @@ export default function NewGoalPage() {
         {/* Restricted Time Slots */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-medium">Restricted Time Slots</label>
+            <label className="block text-sm font-medium text-cyan-100">Restricted Time Slots</label>
             <button
               type="button"
               onClick={addRestrictedSlot}
-              className="text-xs font-medium text-brand-600 hover:text-brand-700"
+              className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
             >
               + Add Restriction
             </button>
           </div>
-          <p className="text-xs text-gray-500 mb-2">
+          <p className="text-xs text-slate-500 mb-2">
             Times when you do NOT want this goal scheduled (e.g., lunch break, meetings).
           </p>
           {restrictedSlots.map((slot, idx) => (
-            <div key={idx} className="flex flex-col gap-2 border rounded-lg p-3 mb-2 bg-slate-50">
+            <div key={idx} className="flex flex-col gap-2 border border-white/[0.08] rounded-lg p-3 mb-2 bg-white/[0.02]">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
-                  <label className="text-xs text-gray-500">From</label>
+                  <label className="text-xs text-slate-500">From</label>
                   <select
                     value={slot.start_hour}
                     onChange={(e) => updateRestrictedSlot(idx, "start_hour", Number(e.target.value))}
-                    className="border rounded px-2 py-1 text-sm"
+                    className="dark-select text-sm !w-auto"
                   >
                     {Array.from({ length: 24 }, (_, h) => (
                       <option key={h} value={h}>
@@ -178,11 +178,11 @@ export default function NewGoalPage() {
                   </select>
                 </div>
                 <div className="flex items-center gap-1">
-                  <label className="text-xs text-gray-500">To</label>
+                  <label className="text-xs text-slate-500">To</label>
                   <select
                     value={slot.end_hour}
                     onChange={(e) => updateRestrictedSlot(idx, "end_hour", Number(e.target.value))}
-                    className="border rounded px-2 py-1 text-sm"
+                    className="dark-select text-sm !w-auto"
                   >
                     {Array.from({ length: 24 }, (_, h) => (
                       <option key={h} value={h}>
@@ -194,7 +194,7 @@ export default function NewGoalPage() {
                 <button
                   type="button"
                   onClick={() => removeRestrictedSlot(idx)}
-                  className="ml-auto text-xs text-red-500 hover:text-red-700"
+                  className="ml-auto text-xs text-red-400 hover:text-red-300"
                 >
                   Remove
                 </button>
@@ -207,8 +207,8 @@ export default function NewGoalPage() {
                     onClick={() => toggleDay(idx, day)}
                     className={`px-2 py-0.5 text-xs rounded-full border ${
                       slot.days.includes(day)
-                        ? "bg-brand-600 text-white border-brand-600"
-                        : "bg-white text-slate-500 border-slate-300"
+                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                        : "bg-white/[0.02] text-slate-500 border-white/[0.1]"
                     }`}
                   >
                     {label}
@@ -219,12 +219,12 @@ export default function NewGoalPage() {
           ))}
         </div>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-brand-600 text-white py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-2 rounded-lg hover:brightness-110 disabled:opacity-50 transition"
         >
           {loading ? "Creating..." : "Create Goal From Scenario"}
         </button>

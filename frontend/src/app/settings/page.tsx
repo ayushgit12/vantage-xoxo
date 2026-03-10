@@ -178,46 +178,46 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8 px-6 py-8">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">Phase 1</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Planner Settings</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-400">Phase 1</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-cyan-50">Planner Settings</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-400">
           Teach the planner when you are awake, when you work best, and which recurring commitments should always stay blocked.
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <form onSubmit={handleSave} className="space-y-6 glass-card p-6">
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Profile</h2>
-            <p className="text-sm text-slate-500">This powers personalized scheduling and block density.</p>
+            <h2 className="text-lg font-semibold text-cyan-50">Profile</h2>
+            <p className="text-sm text-slate-400">This powers personalized scheduling and block density.</p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Display Name</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Display Name</label>
               <input
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
                 placeholder="How should Vantage address you?"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Email</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Email</label>
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
                 placeholder="Optional"
                 type="email"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Timezone</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Timezone</label>
               <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-select"
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
               >
@@ -229,7 +229,7 @@ export default function SettingsPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Daily Capacity (hours)</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Daily Capacity (hours)</label>
               <input
                 type="number"
                 value={dailyCapacity}
@@ -237,11 +237,11 @@ export default function SettingsPage() {
                 max={16}
                 step={0.5}
                 onChange={(event) => setDailyCapacity(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Max Topics Per Day</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Max Topics Per Day</label>
               <input
                 type="number"
                 value={maxTopicsPerDay}
@@ -249,7 +249,7 @@ export default function SettingsPage() {
                 max={6}
                 step={1}
                 onChange={(event) => setMaxTopicsPerDay(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
           </div>
@@ -257,26 +257,26 @@ export default function SettingsPage() {
 
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Sleep Window</h2>
-            <p className="text-sm text-slate-500">These hours stay blocked across all seven days.</p>
+            <h2 className="text-lg font-semibold text-cyan-50">Sleep Window</h2>
+            <p className="text-sm text-slate-400">These hours stay blocked across all seven days.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Sleep Start</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Sleep Start</label>
               <input
                 type="time"
                 value={sleepStart}
                 onChange={(event) => setSleepStart(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Sleep End</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Sleep End</label>
               <input
                 type="time"
                 value={sleepEnd}
                 onChange={(event) => setSleepEnd(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
           </div>
@@ -284,31 +284,31 @@ export default function SettingsPage() {
 
         <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Preferred Study Window</h2>
-            <p className="text-sm text-slate-500">The planner will favor this range before filling other open slots.</p>
+            <h2 className="text-lg font-semibold text-cyan-50">Preferred Study Window</h2>
+            <p className="text-sm text-slate-400">The planner will favor this range before filling other open slots.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Window Start</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Window Start</label>
               <input
                 type="time"
                 value={preferredStart}
                 onChange={(event) => setPreferredStart(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Window End</label>
+              <label className="mb-1 block text-sm font-medium text-cyan-100">Window End</label>
               <input
                 type="time"
                 value={preferredEnd}
                 onChange={(event) => setPreferredEnd(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                className="dark-input"
               />
             </div>
           </div>
           <div>
-            <p className="mb-2 text-sm font-medium">Preferred Days</p>
+            <p className="mb-2 text-sm font-medium text-cyan-100">Preferred Days</p>
             <div className="flex flex-wrap gap-2">
               {DAYS.map((day, index) => {
                 const active = preferredDays.includes(index);
@@ -319,8 +319,8 @@ export default function SettingsPage() {
                     onClick={() => toggleDay(index, preferredDays, setPreferredDays)}
                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                       active
-                        ? "bg-brand-600 text-white"
-                        : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                        : "border border-white/[0.1] bg-white/[0.02] text-slate-500 hover:bg-white/[0.04]"
                     }`}
                   >
                     {day}
@@ -331,23 +331,23 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        {saved ? <p className="text-sm text-emerald-600">Settings saved.</p> : null}
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {saved ? <p className="text-sm text-emerald-400">Settings saved.</p> : null}
 
         <button
           type="submit"
           disabled={saving}
-          className="w-full rounded-xl bg-brand-600 py-2.5 text-white hover:bg-brand-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 py-2.5 text-white hover:brightness-110 disabled:opacity-50 transition"
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>
       </form>
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="glass-card p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Weekly Commitments</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-lg font-semibold text-cyan-50">Weekly Commitments</h2>
+            <p className="text-sm text-slate-400">
               Add recurring classes, work shifts, or team rituals so they stay blocked out of your study schedule.
             </p>
           </div>
@@ -357,20 +357,20 @@ export default function SettingsPage() {
           <input
             value={constraintTitle}
             onChange={(event) => setConstraintTitle(event.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2"
+            className="dark-input"
             placeholder="e.g. Standup, class, gym"
           />
           <input
             type="time"
             value={constraintStart}
             onChange={(event) => setConstraintStart(event.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2"
+            className="dark-input"
           />
           <input
             type="time"
             value={constraintEnd}
             onChange={(event) => setConstraintEnd(event.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2"
+            className="dark-input"
           />
         </div>
 
@@ -384,8 +384,8 @@ export default function SettingsPage() {
                 onClick={() => toggleDay(index, constraintDays, setConstraintDays)}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                   active
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                    : "border border-white/[0.1] bg-white/[0.02] text-slate-500 hover:bg-white/[0.04]"
                 }`}
               >
                 {day}
@@ -398,32 +398,32 @@ export default function SettingsPage() {
           type="button"
           onClick={handleAddConstraint}
           disabled={constraintBusy}
-          className="mt-4 rounded-xl border border-slate-900 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-900 hover:text-white disabled:opacity-50"
+          className="mt-4 rounded-xl border border-cyan-500/30 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50 transition"
         >
           {constraintBusy ? "Working..." : "Add Weekly Commitment"}
         </button>
 
         <div className="mt-6 space-y-3">
           {recurringConstraints.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-white/[0.08] px-4 py-6 text-sm text-slate-500">
               No recurring commitments yet. Add the weekly blocks you want the planner to always respect.
             </div>
           ) : (
             recurringConstraints.map((constraint) => (
               <div
                 key={constraint.constraint_id}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3"
+                className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-4 py-3"
               >
                 <div>
-                  <p className="font-medium text-slate-900">{constraint.title}</p>
-                  <p className="text-sm text-slate-500">
+                  <p className="font-medium text-cyan-50">{constraint.title}</p>
+                  <p className="text-sm text-slate-400">
                     {constraint.recurring_days.map((day) => DAYS[day]).join(", ")} | {constraint.recurring_start} - {constraint.recurring_end}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => void handleDeleteConstraint(constraint.constraint_id)}
-                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/10"
                 >
                   Delete
                 </button>
