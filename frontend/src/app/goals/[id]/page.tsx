@@ -12,7 +12,7 @@ import {
   replanAllPlans,
   updateBlockStatus,
   syncCalendar,
-  triggerIngest,
+  triggerIngestStream,
   generatePlan,
   updateKnowledgeTopic,
   updateGoal,
@@ -48,8 +48,21 @@ export default function UnifiedGoalDashboard() {
   const [newTopicHours, setNewTopicHours] = useState("1");
   const [editTitle, setEditTitle] = useState("");
   const [editHours, setEditHours] = useState("");
+  const [ingestStep, setIngestStep] = useState(0);
 
   const isHabitGoal = goal?.goal_type === "habit";
+
+  const retrieverSteps = [
+    { icon: "📄", label: "Loading goal…" },
+    { icon: "📄", label: "Parsing materials & URLs…" },
+    { icon: "✂️", label: "Chunking text for analysis…" },
+    { icon: "🧠", label: "Extracting topics via LLM…" },
+    { icon: "⏱️", label: "Estimating hours per topic…" },
+    { icon: "🔍", label: "Supplementing with web resources…" },
+    { icon: "📦", label: "Building knowledge graph…" },
+    { icon: "💾", label: "Persisting to database…" },
+    { icon: "📋", label: "Triggering planner agent…" },
+  ];
 
   useEffect(() => {
     void loadData();
@@ -318,7 +331,7 @@ export default function UnifiedGoalDashboard() {
         </div>
         
         {/* Actions - typically in a navbar, but placed here for MVP */}
-        <div className="flex gap-3">
+        <div className="flex items-start gap-3">
           <Link href={`/goals/${goalId}/edit`} className="px-5 py-2.5 text-sm font-medium text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] rounded-lg transition">
             Edit Goal
           </Link>
@@ -373,21 +386,77 @@ export default function UnifiedGoalDashboard() {
               </button>
             )
           ) : !knowledge ? (
-            <button 
-              onClick={() => void runAction("ingest", async () => {
-                await triggerIngest(goalId);
-                await loadData();
-              })}
-              disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
-            >
-              {actionLoading === "ingest" ? (
-                <>
-                  <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                  Parsing…
-                </>
-              ) : "Parse Materials"}
-            </button>
+            <div>
+              <button 
+                onClick={() => {
+                  setActionLoading("ingest");
+                  setIngestStep(0);
+                  triggerIngestStream(goalId, (step) => {
+                    setIngestStep(step);
+                  })
+                    .then(() => loadData())
+                    .finally(() => setActionLoading(""));
+                }}
+                disabled={!!actionLoading}
+                className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition flex items-center shadow-sm shadow-cyan-500/20 disabled:opacity-50"
+              >
+                {actionLoading === "ingest" ? (
+                  <>
+                    <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    Running Retriever…
+                  </>
+                ) : "Parse Materials"}
+              </button>
+
+              {/* Retriever progress ticker */}
+              {actionLoading === "ingest" && (
+                <div className="mt-4 glass-card p-4 animate-fadeIn">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300">Retriever Pipeline</p>
+                  </div>
+                  <div className="space-y-2">
+                    {retrieverSteps.map((step, i) => {
+                      const isActive = i === ingestStep;
+                      const isDone = i < ingestStep;
+                      const isPending = i > ingestStep;
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs transition-all duration-500 ${
+                            isActive
+                              ? "bg-cyan-500/10 border border-cyan-500/20"
+                              : isDone
+                              ? "opacity-60"
+                              : "opacity-30"
+                          }`}
+                        >
+                          <span className="text-sm flex-shrink-0">
+                            {isDone ? "✅" : step.icon}
+                          </span>
+                          <span className={isActive ? "text-cyan-100 font-medium" : isDone ? "text-slate-400 line-through" : "text-slate-600"}>
+                            {step.label}
+                          </span>
+                          {isActive && (
+                            <svg className="animate-spin ml-auto h-3.5 w-3.5 text-cyan-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Progress bar */}
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-700 ease-out"
+                      style={{ width: `${((ingestStep + 1) / retrieverSteps.length) * 100}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-600 text-right">
+                    Step {ingestStep + 1} of {retrieverSteps.length}
+                  </p>
+                </div>
+              )}
+            </div>
           ) : !plan ? (
             <button 
               onClick={() => void runAction("plan", async () => {

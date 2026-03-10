@@ -1,42 +1,56 @@
 # Web framework
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-multipart>=0.0.9
+fastapi>=0.135.0
+uvicorn[standard]>=0.41.0
+python-multipart>=0.0.22
+starlette>=0.52.0
 
 # Azure SDKs
-azure-cosmos>=4.7.0
-azure-storage-blob>=12.22.0
-azure-servicebus>=7.12.0
-azure-identity>=1.17.0
+azure-cosmos>=4.15.0
+azure-storage-blob>=12.28.0
+azure-servicebus>=7.14.0
+azure-identity>=1.25.0
+azure-ai-agents>=1.2.0b6
+azure-ai-projects>=1.0.0
 
 # MongoDB (local dev)
-motor>=3.3.0
+motor>=3.7.0
 
 # Gemini (free tier LLM)
 google-generativeai>=0.8.0
 
 # SentenceTransformers (local embeddings — no API key needed)
-sentence-transformers>=3.0.0
-numpy>=1.26.0
+sentence-transformers>=5.0.0
+numpy>=2.4.0
+torch>=2.10.0
+
+# Semantic Kernel
+semantic-kernel>=1.40.0
 
 # YouTube transcript fetching
-youtube-transcript-api>=1.0.0
+youtube-transcript-api>=1.2.0
+yt-dlp>=2026.3.0
 
 # Microsoft Graph (calendar sync)
-msgraph-sdk>=1.5.0
+msgraph-sdk>=1.55.0
 
 # Parsing
-pymupdf>=1.24.0
-beautifulsoup4>=4.12.0
-httpx>=0.27.0
+pymupdf>=1.27.0
+beautifulsoup4>=4.14.0
+httpx>=0.28.0
 
 # Observability
-opentelemetry-api>=1.26.0
-opentelemetry-sdk>=1.26.0
-opentelemetry-instrumentation-fastapi>=0.47b0
-azure-monitor-opentelemetry-exporter>=1.0.0b27
+opentelemetry-api>=1.39.0
+opentelemetry-sdk>=1.39.0
+opentelemetry-instrumentation-fastapi>=0.60b0
+azure-monitor-opentelemetry-exporter>=1.0.0b48
 
 # Utilities
-pydantic>=2.8.0
-pydantic-settings>=2.4.0
-python-dotenv>=1.0.0
+pydantic>=2.11.0
+pydantic-settings>=2.13.0
+python-dotenv>=1.2.0
+
+# SSE
+sse-starlette>=3.3.0
+
+# MCP
+mcp>=1.26.0

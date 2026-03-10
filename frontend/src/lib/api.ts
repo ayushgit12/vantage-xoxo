@@ -51,6 +51,35 @@ export const deleteGoal = (id: string) =>
 export const triggerIngest = (goalId: string) =>
   apiFetch(`/api/retriever/ingest?goal_id=${goalId}`, { method: "POST" });
 
+export async function triggerIngestStream(
+  goalId: string,
+  onProgress: (step: number, label: string, total: number) => void,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/retriever/ingest-stream?goal_id=${goalId}`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`Ingest stream failed: ${res.status}`);
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const dataLine = line.replace(/^data: /, "");
+      if (!dataLine) continue;
+      const msg = JSON.parse(dataLine);
+      if (msg.error) throw new Error(msg.error);
+      onProgress(msg.step, msg.label, msg.total);
+    }
+  }
+}
+
 export const getKnowledge = (goalId: string) =>
   apiFetch<GoalKnowledge>(`/api/retriever/knowledge/${goalId}`);
 

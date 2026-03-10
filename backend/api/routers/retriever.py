@@ -1,7 +1,10 @@
 """Retriever endpoints — trigger ingestion, view GoalKnowledge, review topics."""
 
+import asyncio
+import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_current_user_id
 from shared.models import GoalKnowledge, TopicCreateRequest, TopicUpdateRequest
@@ -58,6 +61,53 @@ async def trigger_ingest(
     except Exception as e:
         logger.exception("Retriever failed for goal %s", goal_id)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ingest-stream")
+async def trigger_ingest_stream(
+    goal_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Run retriever with SSE progress updates."""
+    doc = await goals_repo.find_by_id(goal_id)
+    if not doc or doc.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    if doc.get("goal_type") == GoalType.HABIT:
+        raise HTTPException(status_code=400, detail="Retriever is not applicable to habit goals")
+
+    async def event_stream():
+        progress_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+        async def on_progress(step: int, label: str) -> None:
+            await progress_queue.put({"step": step, "label": label, "total": 9})
+
+        async def run():
+            try:
+                knowledge = await run_retriever(goal_id, user_id, on_progress=on_progress)
+                await progress_queue.put({
+                    "step": 9, "label": "Done", "total": 9,
+                    "status": "completed",
+                    "topics": len(knowledge.topics),
+                    "estimated_hours": knowledge.estimated_total_hours,
+                })
+            except Exception as e:
+                logger.exception("Retriever failed for goal %s", goal_id)
+                await progress_queue.put({"error": str(e)})
+            finally:
+                await progress_queue.put(None)  # sentinel
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                msg = await progress_queue.get()
+                if msg is None:
+                    break
+                yield f"data: {json.dumps(msg)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/knowledge/{goal_id}", response_model=GoalKnowledge)
