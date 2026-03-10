@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def _extract_video_id(url: str) -> str | None:
     patterns = [
-        r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})",
+        r"(?:v=|/v/|youtu\.be/|/shorts/|/embed/|/live/)([a-zA-Z0-9_-]{11})",
     ]
     for pattern in patterns:
         match = re.search(pattern, url)
@@ -25,7 +25,11 @@ def _fetch_transcript(video_id: str) -> str | None:
     """Fetch transcript text using youtube-transcript-api."""
     try:
         api = YouTubeTranscriptApi()
-        transcript = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
+        # Try English first, then fall back to any available language
+        try:
+            transcript = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
+        except Exception:
+            transcript = api.fetch(video_id)
         lines = [snippet.text for snippet in transcript.snippets]
         return " ".join(lines)
     except Exception as e:
