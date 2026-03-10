@@ -167,6 +167,8 @@ export interface Goal {
   prefer_user_materials_only: boolean;
   material_urls: string[];
   uploaded_file_ids: string[];
+  created_at?: string;
+  updated_at?: string;
   completed_at?: string | null;
   knowledge_id?: string;
   active_plan_id?: string;
