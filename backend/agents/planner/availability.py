@@ -83,6 +83,27 @@ class AvailabilityMatrix:
             if slot.date.weekday() in days_of_week and _hour_in_window(slot.hour, start_hour, end_hour):
                 slot.available = False
 
+    def temporarily_block_recurring(
+        self, days_of_week: list[int], start_hour: int, end_hour: int
+    ) -> list[TimeSlot]:
+        """Block recurring slots and return the ones that were newly blocked (for undo)."""
+        newly_blocked: list[TimeSlot] = []
+        for slot in self.slots:
+            if (
+                slot.available
+                and slot.date.weekday() in days_of_week
+                and _hour_in_window(slot.hour, start_hour, end_hour)
+            ):
+                slot.available = False
+                newly_blocked.append(slot)
+        return newly_blocked
+
+    @staticmethod
+    def restore_slots(slots: list["TimeSlot"]):
+        """Undo a temporary block by re-enabling the given slots."""
+        for slot in slots:
+            slot.available = True
+
     def get_available_slots(self, dt: date | None = None) -> list[TimeSlot]:
         if dt:
             return [s for s in self.slots if s.date == dt and s.available]

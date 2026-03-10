@@ -78,33 +78,75 @@ def compute_macro_allocations(
     window_budget = weekly_effort * (window_days / 7.0)
 
     allocations: list[MacroAllocation] = []
+    alloc_map: dict[str, float] = {}  # topic_id -> hours allocated so far
     budget = window_budget
-    # All blocks land in week 0 — the micro-scheduler maps them into real slots.
     week_start = now
 
+    # Track topics fully covered (done or fully allocated) so downstream
+    # topics whose prereqs are met can be unlocked in the same window.
+    covered_in_window: set[str] = set()
+
+    # Seed with already-done topics.
     for topic in ordered_topics:
+        if remaining_per_topic.get(topic.topic_id, 0.0) <= 0.0:
+            covered_in_window.add(topic.topic_id)
+
+    # Multi-pass: each pass finds all eligible topics and splits budget
+    # proportionally among them.  Fully-covered topics unlock dependents
+    # for the next pass.  Stops when budget exhausted or no new eligible.
+    MAX_PASSES = len(ordered_topics)  # upper bound
+    for _ in range(MAX_PASSES):
         if budget < 0.05:
             break
-        remaining = remaining_per_topic.get(topic.topic_id, 0.0)
-        if remaining <= 0.0:
-            continue  # fully done
 
-        # Only schedule a topic when all its prerequisites have been completed.
-        prereqs_done = all(
-            remaining_per_topic.get(pid, 0.0) <= 0.0
-            for pid in topic.prereq_ids
-        )
-        if not prereqs_done:
-            continue  # wait for prereqs to finish in future windows
+        # Gather eligible topics: prereqs met, still needs hours, not yet fully allocated.
+        eligible: list = []
+        for topic in ordered_topics:
+            if topic.topic_id in covered_in_window:
+                continue
+            remaining = remaining_per_topic.get(topic.topic_id, 0.0)
+            already = alloc_map.get(topic.topic_id, 0.0)
+            need = remaining - already
+            if need <= 0.01:
+                covered_in_window.add(topic.topic_id)
+                continue
+            prereqs_met = all(
+                pid in covered_in_window for pid in topic.prereq_ids
+            )
+            if not prereqs_met:
+                continue
+            eligible.append((topic, need))
 
-        alloc = min(remaining, budget)
-        allocations.append(MacroAllocation(
-            goal_id=knowledge.goal_id,
-            topic_id=topic.topic_id,
-            week_start=week_start,
-            allocated_hours=round(alloc, 2),
-        ))
-        budget -= alloc
+        if not eligible:
+            break
+
+        # Proportional split of remaining budget among eligible topics.
+        total_need = sum(need for _, need in eligible)
+        newly_covered = False
+        for topic, need in eligible:
+            share = budget * (need / total_need) if total_need > 0 else budget / len(eligible)
+            alloc = min(need, share)
+            if alloc < 0.01:
+                continue
+            alloc_map[topic.topic_id] = alloc_map.get(topic.topic_id, 0.0) + alloc
+            budget -= alloc
+            if alloc >= need - 0.01:
+                covered_in_window.add(topic.topic_id)
+                newly_covered = True
+
+        if not newly_covered:
+            break  # no new topics unlocked and budget spread — done
+
+    # Convert accumulated allocations to MacroAllocation objects.
+    for topic in ordered_topics:
+        hours = alloc_map.get(topic.topic_id, 0.0)
+        if hours >= 0.01:
+            allocations.append(MacroAllocation(
+                goal_id=knowledge.goal_id,
+                topic_id=topic.topic_id,
+                week_start=week_start,
+                allocated_hours=round(hours, 2),
+            ))
 
     logger.info(
         "Macro allocation (window=%dd, budget=%.2fh): %d topics allocated, %.2fh total",

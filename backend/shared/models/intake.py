@@ -16,6 +16,7 @@ class ManualGoalOverrides(BaseModel):
     deadline: datetime | None = None
     target_weekly_effort: float | None = None
     preferred_schedule: TimeWindow | None = None
+    restricted_slots: list[TimeWindow] | None = None
     prefer_user_materials_only: bool | None = None
     material_urls: list[str] | None = None
 

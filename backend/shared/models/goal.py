@@ -47,6 +47,7 @@ class Goal(BaseModel):
     status: GoalStatus = GoalStatus.ACTIVE
     target_weekly_effort: float | None = None  # hours per week
     preferred_schedule: TimeWindow | None = None
+    restricted_slots: list[TimeWindow] = Field(default_factory=list)
     prefer_user_materials_only: bool = False
     material_urls: list[str] = Field(default_factory=list)
     uploaded_file_ids: list[str] = Field(default_factory=list)
@@ -67,6 +68,7 @@ class GoalCreate(BaseModel):
     status: GoalStatus = GoalStatus.ACTIVE
     target_weekly_effort: float | None = None
     preferred_schedule: TimeWindow | None = None
+    restricted_slots: list[TimeWindow] = Field(default_factory=list)
     prefer_user_materials_only: bool = False
     material_urls: list[str] = Field(default_factory=list)
 
@@ -81,6 +83,7 @@ class GoalUpdate(BaseModel):
     status: GoalStatus | None = None
     target_weekly_effort: float | None = None
     preferred_schedule: TimeWindow | None = None
+    restricted_slots: list[TimeWindow] | None = None
     prefer_user_materials_only: bool | None = None
     material_urls: list[str] | None = None
     completed_at: datetime | None = None

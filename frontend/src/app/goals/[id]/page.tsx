@@ -22,9 +22,9 @@ import {
   type MicroBlock,
   type Topic,
 } from "@/lib/api";
-import { computeBlockProgress, computeTopicProgress, getDefaultSelectedDate, getSortedDates, groupBlocksByDate, parseDateKey } from "@/lib/schedule";
+import { computeBlockProgress, computeTopicProgress, getDefaultSelectedDate, getLocalDateKey, getSortedDates, groupBlocksByDate, parseDateKey } from "@/lib/schedule";
 import { 
-  Calendar, CheckCircle2, ChevronLeft, ChevronRight, 
+  Calendar, CheckCircle2, 
   Clock, FileText, Pencil, Plus, Video, AlertTriangle, XCircle, Trash2, Save
 } from "lucide-react";
 
@@ -48,8 +48,6 @@ export default function UnifiedGoalDashboard() {
   const [newTopicHours, setNewTopicHours] = useState("1");
   const [editTitle, setEditTitle] = useState("");
   const [editHours, setEditHours] = useState("");
-  
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const isHabitGoal = goal?.goal_type === "habit";
 
@@ -176,16 +174,6 @@ export default function UnifiedGoalDashboard() {
   // Group plan blocks by date
   const blocksByDate = groupBlocksByDate(plan?.micro_blocks || []);
   const availableDates = getSortedDates(blocksByDate);
-  
-  // Set default selected date if none chosen
-  useEffect(() => {
-    setSelectedDate((current) => {
-      if (current && availableDates.includes(current)) {
-        return current;
-      }
-      return getDefaultSelectedDate(availableDates);
-    });
-  }, [availableDates, selectedDate]);
 
   // Check for drift (any missed blocks)
   const hasDrift = plan?.micro_blocks.some(b => b.status === "missed");
@@ -354,9 +342,14 @@ export default function UnifiedGoalDashboard() {
                   await loadData();
                 })}
                 disabled={!!actionLoading}
-                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
               >
-                Generate Routine
+                {actionLoading === "plan" ? (
+                  <>
+                    <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    Generating…
+                  </>
+                ) : "Generate Routine"}
               </button>
             ) : (
               <button 
@@ -364,10 +357,19 @@ export default function UnifiedGoalDashboard() {
                   await syncCalendar(plan.plan_id);
                 })}
                 disabled={!!actionLoading}
-                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+                className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
               >
-                <Calendar className="w-4 h-4 mr-2" />
-                Sync to Calendar
+                {actionLoading === "sync" ? (
+                  <>
+                    <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    Syncing…
+                  </>
+                ) : (
+                  <>
+                    <Calendar className="w-4 h-4 mr-2" />
+                    Sync to Calendar
+                  </>
+                )}
               </button>
             )
           ) : !knowledge ? (
@@ -377,9 +379,14 @@ export default function UnifiedGoalDashboard() {
                 await loadData();
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
             >
-              Parse Materials
+              {actionLoading === "ingest" ? (
+                <>
+                  <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Parsing…
+                </>
+              ) : "Parse Materials"}
             </button>
           ) : !plan ? (
             <button 
@@ -388,9 +395,14 @@ export default function UnifiedGoalDashboard() {
                 await loadData();
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
             >
-              Generate Plan
+              {actionLoading === "plan" ? (
+                <>
+                  <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Generating…
+                </>
+              ) : "Generate Plan"}
             </button>
           ) : (
             <button 
@@ -398,10 +410,19 @@ export default function UnifiedGoalDashboard() {
                 await syncCalendar(plan.plan_id);
               })}
               disabled={!!actionLoading}
-              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm"
+              className="px-5 py-2.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition flex items-center shadow-sm disabled:opacity-50"
             >
-              <Calendar className="w-4 h-4 mr-2" />
-              Sync to Calendar
+              {actionLoading === "sync" ? (
+                <>
+                  <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Syncing…
+                </>
+              ) : (
+                <>
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Sync to Calendar
+                </>
+              )}
             </button>
           )}
         </div>
@@ -659,130 +680,226 @@ export default function UnifiedGoalDashboard() {
           ) : null}
         </div>
 
-        {/* Right Main Area: Timeline */}
+        {/* Right Main Area: Weekly Calendar */}
         <div className="md:col-span-9">
           
-          {plan ? (
-            <div className="bg-white border text-slate-800 rounded-2xl shadow-sm overflow-hidden">
-              {/* Date Carousel */}
-              <div className="flex items-center justify-between border-b px-2 py-2 mb-6">
-                <button className="p-3 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-full transition">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="flex flex-1 justify-center gap-2 overflow-x-auto no-scrollbar">
-                  {availableDates.map(dateStr => {
-                    const { dayOfWeek, dayOfMonth } = formatDateHeader(dateStr);
-                    const isSelected = selectedDate === dateStr;
-                    return (
-                      <button 
-                        key={dateStr}
-                        onClick={() => setSelectedDate(dateStr)}
-                        className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl transition-all ${
-                          isSelected ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className={`text-[10px] font-bold ${isSelected ? 'text-brand-100' : ''}`}>{dayOfWeek}</span>
-                        <span className="text-lg font-bold">{dayOfMonth}</span>
-                      </button>
-                    );
-                  })}
+          {plan && plan.micro_blocks.length > 0 ? (() => {
+            // Compute the earliest and latest hours across ALL blocks
+            const allBlocks = plan.micro_blocks;
+            let minHour = 24;
+            let maxHour = 0;
+            for (const b of allBlocks) {
+              const d = new Date(b.start_dt);
+              const startH = d.getHours();
+              const endH = startH + Math.ceil(b.duration_min / 60);
+              if (startH < minHour) minHour = startH;
+              if (endH > maxHour) maxHour = endH;
+            }
+            // Pad by 1 hour on each side for breathing room
+            const gridStartHour = Math.max(0, minHour - 1);
+            const gridEndHour = Math.min(24, maxHour + 1);
+            const hourSlots = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
+
+            // Topic color palette
+            const TOPIC_COLORS = [
+              { bg: "bg-blue-100", border: "border-blue-300", text: "text-blue-800", accent: "bg-blue-500" },
+              { bg: "bg-emerald-100", border: "border-emerald-300", text: "text-emerald-800", accent: "bg-emerald-500" },
+              { bg: "bg-violet-100", border: "border-violet-300", text: "text-violet-800", accent: "bg-violet-500" },
+              { bg: "bg-amber-100", border: "border-amber-300", text: "text-amber-800", accent: "bg-amber-500" },
+              { bg: "bg-rose-100", border: "border-rose-300", text: "text-rose-800", accent: "bg-rose-500" },
+              { bg: "bg-cyan-100", border: "border-cyan-300", text: "text-cyan-800", accent: "bg-cyan-500" },
+              { bg: "bg-pink-100", border: "border-pink-300", text: "text-pink-800", accent: "bg-pink-500" },
+              { bg: "bg-indigo-100", border: "border-indigo-300", text: "text-indigo-800", accent: "bg-indigo-500" },
+            ];
+            const topicColorMap: Record<string, typeof TOPIC_COLORS[0]> = {};
+            let colorIdx = 0;
+            for (const b of allBlocks) {
+              if (!topicColorMap[b.topic_id]) {
+                topicColorMap[b.topic_id] = TOPIC_COLORS[colorIdx % TOPIC_COLORS.length];
+                colorIdx++;
+              }
+            }
+
+            const ROW_HEIGHT = 60; // pixels per hour
+
+            return (
+              <div className="bg-white border text-slate-800 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Weekly Schedule</h3>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-3">
+                    {knowledge?.topics.filter(t => topicColorMap[t.topic_id]).map(t => {
+                      const c = topicColorMap[t.topic_id];
+                      return (
+                        <div key={t.topic_id} className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          <span className={`w-2.5 h-2.5 rounded-full ${c.accent}`} />
+                          {t.title}
+                        </div>
+                      );
+                    })}
+                    {/* Habit goals with no knowledge */}
+                    {!knowledge && isHabitGoal && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                        {goal.title}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button className="p-3 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-full transition">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
 
-              {/* Timeline Container */}
-              <div className="px-6 py-4 space-y-6 max-h-[500px] overflow-y-auto">
-                {(selectedDate && blocksByDate[selectedDate] ? blocksByDate[selectedDate] : []).map(block => {
-                  const topic = knowledge?.topics.find(t => t.topic_id === block.topic_id);
-                  const isDone = block.status === "done";
-                  const isPartial = block.status === "partial";
-                  const isMissed = block.status === "missed";
-                  // Assuming the next 'scheduled' block is active
-                  const isActive = block.status === "scheduled" && new Date(block.start_dt).getTime() < Date.now() + 3600000;
-                  
-                  let cardStyle = "block-upcoming";
-                  if (isDone) cardStyle = "block-done";
-                  else if (isPartial) cardStyle = "block-partial";
-                  else if (isMissed) cardStyle = "block-missed";
-                  else if (isActive) cardStyle = "block-active";
-
-                  return (
-                    <div key={block.block_id} className="relative flex items-start gap-4">
-                      {/* Left Time label */}
-                      <div className="w-12 pt-4 text-xs font-mono font-medium text-slate-400 text-right shrink-0">
-                        {formatTime(block.start_dt)}
-                      </div>
-                      
-                      {/* Block Card */}
-                      <div className={`flex-1 rounded-xl p-4 flex justify-between items-center transition-all ${cardStyle}`}>
-                        <div>
-                          <h4 className={`font-semibold text-sm mb-1 ${isDone ? 'line-through opacity-70' : ''}`}>
-                            {topic?.title || `Topic ${block.topic_id.substring(0,8)}`}
-                          </h4>
-                          <div className="flex items-center gap-2 text-xs font-medium opacity-80">
-                            <span className="px-1.5 py-0.5 rounded bg-black/5 uppercase font-bold tracking-wider">
-                              {block.duration_min >= 60 ? `${block.duration_min/60} HRS` : `${block.duration_min} MIN`}
-                            </span>
-                            {topic?.title && <span className="opacity-70">— {goal?.category || "Study"}</span>}
+                <div className="overflow-x-auto">
+                  <div className="min-w-[700px]">
+                    {/* Day Headers */}
+                    <div className="grid border-b" style={{ gridTemplateColumns: "56px repeat(" + availableDates.length + ", 1fr)" }}>
+                      <div className="border-r border-slate-100" />
+                      {availableDates.map(dateStr => {
+                        const { dayOfWeek, dayOfMonth } = formatDateHeader(dateStr);
+                        const isToday = dateStr === getLocalDateKey(new Date());
+                        return (
+                          <div key={dateStr} className={`text-center py-3 border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-brand-50' : ''}`}>
+                            <div className="text-[10px] font-bold text-slate-400 tracking-widest">{dayOfWeek}</div>
+                            <div className={`text-lg font-bold ${isToday ? 'text-brand-600' : 'text-slate-700'}`}>{dayOfMonth}</div>
                           </div>
-                        </div>
-
-                        {/* Interactive Status Icons */}
-                        <div className="flex gap-2 shrink-0">
-                          {block.status === "scheduled" && (
-                            <>
-                              <button
-                                onClick={() => handleStatusChange(block.block_id, "done")}
-                                disabled={blockActionId === block.block_id}
-                                className="p-2 text-green-600 hover:bg-green-100 rounded-full transition disabled:opacity-50"
-                              >
-                                <CheckCircle2 className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() => handleStatusChange(block.block_id, "partial")}
-                                disabled={blockActionId === block.block_id}
-                                className="p-2 text-amber-600 hover:bg-amber-100 rounded-full transition disabled:opacity-50"
-                              >
-                                <Clock className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() => handleStatusChange(block.block_id, "missed")}
-                                disabled={blockActionId === block.block_id}
-                                className="p-2 text-red-500 hover:bg-red-50 rounded-full transition disabled:opacity-50"
-                              >
-                                <XCircle className="w-5 h-5" />
-                              </button>
-                            </>
-                          )}
-                          {isDone && <CheckCircle2 className="w-6 h-6 text-green-600" />}
-                          {isPartial && (
-                            <div className="flex flex-col items-center">
-                              <Clock className="w-5 h-5 text-amber-600 mb-0.5" />
-                              <span className="text-[9px] font-bold text-amber-600 tracking-wider">PARTIAL</span>
-                            </div>
-                          )}
-                          {isMissed && (
-                            <div className="flex flex-col items-center">
-                              <AlertTriangle className="w-5 h-5 text-red-500 mb-0.5" />
-                              <span className="text-[9px] font-bold text-red-500 tracking-wider">MISSED</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
 
-                {(!selectedDate || !blocksByDate[selectedDate]?.length) && (
-                  <div className="text-center py-12 text-slate-400 text-sm">
-                    No blocks scheduled for this date.
+                    {/* Time Grid */}
+                    <div className="relative grid" style={{ gridTemplateColumns: "56px repeat(" + availableDates.length + ", 1fr)" }}>
+                      {/* Hour labels + horizontal lines */}
+                      <div className="relative" style={{ height: hourSlots.length * ROW_HEIGHT }}>
+                        {hourSlots.map((hour) => (
+                          <div
+                            key={hour}
+                            className="absolute w-full border-b border-slate-100 flex items-start justify-end pr-2 pt-0.5"
+                            style={{ top: (hour - gridStartHour) * ROW_HEIGHT, height: ROW_HEIGHT }}
+                          >
+                            <span className="text-[10px] font-mono text-slate-400">{String(hour).padStart(2, "0")}:00</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Day columns with blocks */}
+                      {availableDates.map(dateStr => {
+                        const dayBlocks = blocksByDate[dateStr] || [];
+                        const isToday = dateStr === getLocalDateKey(new Date());
+                        return (
+                          <div
+                            key={dateStr}
+                            className={`relative border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-brand-50/30' : ''}`}
+                            style={{ height: hourSlots.length * ROW_HEIGHT }}
+                          >
+                            {/* Hour gridlines */}
+                            {hourSlots.map((hour) => (
+                              <div
+                                key={hour}
+                                className="absolute w-full border-b border-slate-100"
+                                style={{ top: (hour - gridStartHour) * ROW_HEIGHT, height: ROW_HEIGHT }}
+                              />
+                            ))}
+
+                            {/* Blocks */}
+                            {dayBlocks.map(block => {
+                              const d = new Date(block.start_dt);
+                              const startMinutes = d.getHours() * 60 + d.getMinutes();
+                              const topPx = ((startMinutes / 60) - gridStartHour) * ROW_HEIGHT;
+                              const heightPx = Math.max((block.duration_min / 60) * ROW_HEIGHT, 28);
+                              const colors = topicColorMap[block.topic_id] || TOPIC_COLORS[0];
+                              const topic = knowledge?.topics.find(t => t.topic_id === block.topic_id);
+                              const isDone = block.status === "done";
+                              const isPartial = block.status === "partial";
+                              const isMissed = block.status === "missed";
+
+                              return (
+                                <div
+                                  key={block.block_id}
+                                  className={`absolute left-0.5 right-0.5 rounded-lg border px-1.5 py-1 overflow-hidden cursor-default group transition-shadow hover:shadow-md ${colors.bg} ${colors.border} ${isDone ? 'opacity-60' : isMissed ? 'opacity-40' : ''}`}
+                                  style={{ top: topPx, height: heightPx }}
+                                  title={`${topic?.title || goal.title}\n${formatTime(block.start_dt)} – ${block.duration_min} min\nStatus: ${block.status}`}
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-[10px] font-bold leading-tight truncate ${colors.text} ${isDone ? 'line-through' : ''}`}>
+                                        {topic?.title || (isHabitGoal ? goal.title : `Topic ${block.topic_id.substring(0,6)}`)}
+                                      </p>
+                                      {heightPx >= 40 && (
+                                        <p className={`text-[9px] mt-0.5 ${colors.text} opacity-70`}>
+                                          {formatTime(block.start_dt)} · {block.duration_min}m
+                                        </p>
+                                      )}
+                                    </div>
+                                    {/* Status indicator */}
+                                    <div className="shrink-0 mt-0.5">
+                                      {isDone && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                                      {isPartial && <Clock className="w-3 h-3 text-amber-600" />}
+                                      {isMissed && <AlertTriangle className="w-3 h-3 text-red-500" />}
+                                    </div>
+                                  </div>
+
+                                  {/* Action buttons on hover for scheduled blocks */}
+                                  {block.status === "scheduled" && heightPx >= 48 && (
+                                    <div className="hidden group-hover:flex gap-1 mt-0.5">
+                                      <button
+                                        onClick={() => handleStatusChange(block.block_id, "done")}
+                                        disabled={blockActionId === block.block_id}
+                                        className="p-0.5 rounded bg-green-200 text-green-700 hover:bg-green-300 transition disabled:opacity-50"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleStatusChange(block.block_id, "partial")}
+                                        disabled={blockActionId === block.block_id}
+                                        className="p-0.5 rounded bg-amber-200 text-amber-700 hover:bg-amber-300 transition disabled:opacity-50"
+                                      >
+                                        <Clock className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleStatusChange(block.block_id, "missed")}
+                                        disabled={blockActionId === block.block_id}
+                                        className="p-0.5 rounded bg-red-200 text-red-700 hover:bg-red-300 transition disabled:opacity-50"
+                                      >
+                                        <XCircle className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Current time indicator */}
+                            {isToday && (() => {
+                              const now = new Date();
+                              const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                              const nowHour = nowMinutes / 60;
+                              if (nowHour >= gridStartHour && nowHour <= gridEndHour) {
+                                const topNow = (nowHour - gridStartHour) * ROW_HEIGHT;
+                                return (
+                                  <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: topNow }}>
+                                    <div className="flex items-center">
+                                      <div className="w-2 h-2 rounded-full bg-red-500 -ml-1" />
+                                      <div className="flex-1 h-px bg-red-500" />
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Block status list for small blocks / mobile fallback */}
+                {blockError && (
+                  <div className="mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {blockError}
                   </div>
                 )}
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div className="h-64 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400">
               {isHabitGoal ? "Generate a routine to see your schedule" : "Generate a plan to see your timeline"}
             </div>

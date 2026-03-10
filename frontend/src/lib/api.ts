@@ -130,6 +130,7 @@ export interface GoalCreate {
   status?: GoalStatus;
   target_weekly_effort?: number;
   preferred_schedule?: TimeWindow | null;
+  restricted_slots?: TimeWindow[];
   prefer_user_materials_only?: boolean;
   material_urls?: string[];
 }
@@ -144,6 +145,7 @@ export interface GoalUpdate {
   status?: GoalStatus;
   target_weekly_effort?: number | null;
   preferred_schedule?: TimeWindow | null;
+  restricted_slots?: TimeWindow[] | null;
   prefer_user_materials_only?: boolean;
   material_urls?: string[];
   completed_at?: string | null;
@@ -161,6 +163,7 @@ export interface Goal {
   status: GoalStatus;
   target_weekly_effort?: number;
   preferred_schedule?: TimeWindow | null;
+  restricted_slots?: TimeWindow[];
   prefer_user_materials_only: boolean;
   material_urls: string[];
   uploaded_file_ids: string[];
@@ -312,6 +315,7 @@ export interface ScenarioGoalRequest {
     prefer_user_materials_only?: boolean;
     material_urls?: string[];
     preferred_schedule?: TimeWindow;
+    restricted_slots?: TimeWindow[];
   };
 }
 

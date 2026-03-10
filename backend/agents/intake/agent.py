@@ -43,6 +43,13 @@ Return a JSON object with these exact top-level fields:
       "end_hour": <integer 0-23>,
       "duration_min": <integer, minutes per session>
     }},
+    "restricted_slots": [
+      {{
+        "days": [0,1,2,3,4,5,6],
+        "start_hour": <integer 0-23>,
+        "end_hour": <integer 0-23>
+      }}
+    ],
     "prefer_user_materials_only": false,
     "material_urls": []
   }},
@@ -56,6 +63,7 @@ Rules:
 - goal_type MUST be "learning" for studying, courses, interview prep, reading technical material.
 - goal_type MUST be "project" for building/shipping deliverables.
 - preferred_schedule is REQUIRED for habit goals. For learning/project it can be null.
+- restricted_slots is an array of time windows when the user does NOT want this goal scheduled. Use an empty array [] if not mentioned.
 - deadline MUST be YYYY-MM-DD format. For habits with no explicit end, use 1 year from today.
 - All enum values must be lowercase.
 - Respond with valid JSON only. No markdown fences, no explanation.
@@ -134,6 +142,18 @@ def _parse_goal_create(goal_data: dict, deadline_override: datetime | None = Non
     material_urls_raw = goal_data.get("material_urls", [])
     material_urls = material_urls_raw if isinstance(material_urls_raw, list) else []
 
+    # Restricted time slots
+    restricted_slots: list[TimeWindow] = []
+    raw_restricted = goal_data.get("restricted_slots", [])
+    if isinstance(raw_restricted, list):
+        for rs in raw_restricted:
+            if isinstance(rs, dict):
+                restricted_slots.append(TimeWindow(
+                    start_hour=int(rs.get("start_hour", 0)),
+                    end_hour=int(rs.get("end_hour", 0)),
+                    days=list(rs.get("days", list(range(7)))),
+                ))
+
     return GoalCreate(
         title=title,
         description=description,
@@ -143,6 +163,7 @@ def _parse_goal_create(goal_data: dict, deadline_override: datetime | None = Non
         deadline=deadline,
         target_weekly_effort=goal_data.get("target_weekly_effort"),
         preferred_schedule=preferred_schedule,
+        restricted_slots=restricted_slots,
         prefer_user_materials_only=prefer_user_materials_only,
         material_urls=material_urls,
     )

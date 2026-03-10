@@ -23,7 +23,7 @@ from shared.db.repositories import (
 from shared.bus.service_bus import send_message
 from shared.telemetry.tracing import get_tracer
 
-from agents.planner.availability import build_availability_matrix
+from agents.planner.availability import build_availability_matrix, AvailabilityMatrix
 from agents.planner.macro_allocator import compute_macro_allocations
 from agents.planner.micro_scheduler import schedule_micro_blocks
 from agents.planner.habit_scheduler import schedule_habit_blocks
@@ -229,6 +229,17 @@ async def replan_all_goals(
                 done_minutes_per_topic=done_minutes_for_goal,
             )
 
+            # Temporarily block this goal's restricted time slots
+            restricted_slots = goal_doc.get("restricted_slots", [])
+            temp_blocked: list = []
+            for rs in restricted_slots:
+                days = rs.get("days", list(range(7)))
+                temp_blocked.extend(
+                    availability.temporarily_block_recurring(
+                        days, rs.get("start_hour", 0), rs.get("end_hour", 0)
+                    )
+                )
+
             # Schedule into remaining available slots
             micro_blocks = schedule_micro_blocks(
                 knowledge=knowledge,
@@ -238,6 +249,9 @@ async def replan_all_goals(
                 max_topics_per_day=user.max_topics_per_day,
                 max_daily_minutes=int(user.daily_capacity_hours * 60),
             )
+
+            # Restore temporarily blocked restricted slots so other goals can use them
+            AvailabilityMatrix.restore_slots(temp_blocked)
 
             # Block the just-scheduled slots so the next goal can't use them.
             # Use slot-precise blocking (not integer-hour) to avoid wasting :30 slots.

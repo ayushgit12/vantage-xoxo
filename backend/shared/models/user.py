@@ -27,7 +27,8 @@ class TimeWindow(BaseModel):
     @model_validator(mode="after")
     def validate_window(self):
         if self.start_hour == self.end_hour:
-            raise ValueError("Start and end hour cannot be the same")
+            # Auto-extend end_hour by 1 (e.g., 18→19 for a sub-60min session)
+            self.end_hour = min(self.start_hour + 1, 23)
         if self.duration_min is not None and self.duration_min <= 0:
             raise ValueError("Duration must be positive")
         return self
