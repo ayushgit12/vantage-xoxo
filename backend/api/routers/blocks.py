@@ -3,17 +3,40 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from agents.planner.agent import replan_all_goals
+from agents.executor.status_tracker import validate_status_transition
 from api.dependencies import get_current_user_id
 from shared.models import BlockStatus
 from shared.db.repositories import plans_repo
-from shared.bus.service_bus import send_message
-from shared.config import get_settings
 
 router = APIRouter()
 
 
 class StatusUpdate(BaseModel):
     status: BlockStatus
+
+
+async def _find_plan_by_block_id(user_id: str, block_id: str) -> dict | None:
+    """Find the owning plan document for a nested micro block.
+
+    Cosmos nested-array queries were returning false negatives here, so keep the
+    lookup simple and scan the current user's plans in application code.
+    """
+    plans = await plans_repo.find_many({"user_id": user_id}, limit=250)
+    for plan in plans:
+        for block in plan.get("micro_blocks", []):
+            if block.get("block_id") == block_id:
+                return plan
+    return None
+
+
+def _apply_block_status(plan_doc: dict, block_id: str, status: BlockStatus) -> bool:
+    """Update a block status inside a plan document in-memory."""
+    for block in plan_doc.get("micro_blocks", []):
+        if block.get("block_id") == block_id:
+            block["status"] = status
+            return True
+    return False
 
 
 @router.post("/{block_id}/status")
@@ -24,17 +47,30 @@ async def update_block_status(
 ):
     """Mark a micro block as done/partial/missed and trigger partial replan."""
     # Find the plan containing this block
-    plans = await plans_repo.find_many({"user_id": user_id, "micro_blocks.block_id": block_id})
-    if not plans:
+    plan_doc = await _find_plan_by_block_id(user_id, block_id)
+    if not plan_doc:
         raise HTTPException(status_code=404, detail="Block not found")
 
-    plan_doc = plans[0]
+    # Enforce the state machine before writing anything.
+    current_block = next(
+        (b for b in plan_doc.get("micro_blocks", []) if b.get("block_id") == block_id),
+        None,
+    )
+    if current_block:
+        try:
+            current_status = BlockStatus(current_block["status"])
+        except ValueError:
+            current_status = BlockStatus.SCHEDULED
+        if not validate_status_transition(current_status, body.status):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid transition: '{current_status}' → '{body.status}'",
+            )
 
     # Update block status in the plan document
-    for block in plan_doc.get("micro_blocks", []):
-        if block["block_id"] == block_id:
-            block["status"] = body.status
-            break
+    updated = _apply_block_status(plan_doc, block_id, body.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Block not found")
 
     await plans_repo.update(
         plan_doc["plan_id"],
@@ -42,19 +78,16 @@ async def update_block_status(
         id_field="plan_id",
     )
 
-    # If missed or partial, trigger partial replan
+    # If missed or partial, replan immediately so the caller sees the new schedule.
     if body.status in (BlockStatus.MISSED, BlockStatus.PARTIAL):
-        settings = get_settings()
-        await send_message(
-            settings.service_bus_queue_planner,
-            {
-                "goal_id": plan_doc["goal_id"],
-                "user_id": user_id,
-                "window_days": 7,
-                "replan": True,
-                "trigger_block_id": block_id,
-            },
-        )
-        return {"status": "updated", "replan": "queued"}
+        plans = await replan_all_goals(user_id, window_days=7)
+        updated_goal_plan = next((plan for plan in plans if plan.goal_id == plan_doc["goal_id"]), None)
+        return {
+            "status": "updated",
+            "replan": "completed",
+            "goal_id": plan_doc["goal_id"],
+            "plan_id": updated_goal_plan.plan_id if updated_goal_plan else None,
+            "total_blocks": len(updated_goal_plan.micro_blocks) if updated_goal_plan else 0,
+        }
 
     return {"status": "updated", "replan": "none"}

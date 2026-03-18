@@ -20,6 +20,8 @@ class Topic(BaseModel):
     est_hours: float
     prereq_ids: list[str] = Field(default_factory=list)
     resource_refs: list[str] = Field(default_factory=list)  # ref_ids
+    source: str = "model"  # model | user | prompt_patch
+    locked_fields: list[str] = Field(default_factory=list)
 
 
 class Milestone(BaseModel):
@@ -40,3 +42,19 @@ class GoalKnowledge(BaseModel):
     confidence_score: float = 0.0  # 0.0 to 1.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TopicCreateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    description: str = ""
+    est_hours: float = Field(gt=0)
+    prereq_ids: list[str] = Field(default_factory=list)
+    resource_refs: list[str] = Field(default_factory=list)
+
+
+class TopicUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    est_hours: float | None = Field(default=None, gt=0)
+    prereq_ids: list[str] | None = None
+    resource_refs: list[str] | None = None

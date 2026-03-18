@@ -1,13 +1,13 @@
-"""Topic and milestone extraction using Gemini + SentenceTransformers.
+"""Topic and milestone extraction using LLM + SentenceTransformers.
 
 - SentenceTransformers: clusters chunks into semantic groups (topics)
-- Gemini free tier: generates structured topic/milestone descriptions
+- LLM: generates structured topic/milestone descriptions
 Results are cached by content hash to avoid duplicate API calls.
 """
 
 import json
 import logging
-import google.generativeai as genai
+from shared.ai import run_prompt_via_graph
 
 from shared.config import get_settings
 from shared.cache.cache import get_cached, set_cached
@@ -63,7 +63,7 @@ async def extract_topics_and_milestones(
     goal_title: str,
     goal_category: str,
 ) -> dict:
-    """Extract topics and milestones using SentenceTransformers + Gemini."""
+    """Extract topics and milestones using SentenceTransformers + LLM."""
 
     # Filter out empty/whitespace-only chunks
     chunks = [c for c in chunks if c.strip()]
@@ -96,14 +96,13 @@ async def extract_topics_and_milestones(
         clusters = []
         topic_hints = []
 
-    # Step 2: If no Gemini key, use embedding-based heuristic extraction
-    if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
-        logger.warning("No Gemini API key; using SentenceTransformers-only extraction")
+    # Step 2: If no LLM key, use embedding-based heuristic extraction
+    active_key = settings.llm_api_key or settings.azure_openai_api_key
+    if not active_key or active_key == "your-llm-api-key-here":
+        logger.warning("No LLM API key; using SentenceTransformers-only extraction")
         return _embedding_extraction(chunks, clusters, topic_hints, goal_title)
 
-    # Step 3: Use Gemini to generate structured extraction
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(settings.gemini_model)
+    # Step 3: Use LLM to generate structured extraction
 
     if has_material:
         chunks_text = "\n\n---CHUNK---\n\n".join(chunks[:10])
@@ -118,28 +117,26 @@ async def extract_topics_and_milestones(
             goal_category=goal_category,
         )
 
+    # --- DEBUG ---
+    logger.info("[DEBUG] LLM model: %s", settings.llm_model)
+    logger.info("[DEBUG] Prompt length: %d chars", len(prompt))
+    logger.info("[DEBUG] Has material: %s, Chunks count: %d", has_material, len(chunks))
+
     try:
-        response = model.generate_content(
+        result_text = run_prompt_via_graph(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.0,
-                max_output_tokens=8192,
-                response_mime_type="application/json",
-            ),
+            temperature=0.0,
+            json_mode=True,
         )
     except Exception as e:
-        logger.warning("Gemini API call failed: %s; falling back to embeddings", e)
-        return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
+        logger.error("[DEBUG] LLM API call failed: %s", e, exc_info=True)
+        raise
 
-    # Some responses may be blocked or empty
-    if not response.parts:
-        logger.warning("Gemini returned empty response (possibly blocked); falling back to embeddings")
-        return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
+    result_text = result_text.strip()
+    logger.info("[DEBUG] LLM raw response length: %d chars", len(result_text))
+    logger.info("[DEBUG] LLM raw response (first 500 chars):\n%s", result_text[:500])
 
-    result_text = response.text.strip()
-    logger.debug("Gemini raw response (first 500 chars): %s", result_text[:500])
-
-    # Strip markdown code blocks if present
+    # Strip markdown code fences if present
     import re
     result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
     result_text = re.sub(r"\n?```\s*$", "", result_text)
@@ -148,31 +145,12 @@ async def extract_topics_and_milestones(
     try:
         result = json.loads(result_text)
     except json.JSONDecodeError as e:
-        # Fix trailing commas
-        fixed = re.sub(r",\s*([}\]])", r"\1", result_text)
-        # If truncated (cut off mid-JSON), try to close it
-        if response.candidates and response.candidates[0].finish_reason.name == "MAX_TOKENS":
-            logger.warning("Gemini response truncated (MAX_TOKENS); attempting repair")
-            fixed = _repair_truncated_json(fixed)
-        try:
-            result = json.loads(fixed)
-        except json.JSONDecodeError:
-            # Try extracting just the JSON object
-            match = re.search(r"\{.*\}", fixed, re.DOTALL)
-            if match:
-                try:
-                    result = json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-                else:
-                    logger.info("Recovered JSON via regex extraction")
-                    await set_cached(cache_key, result)
-                    return result
-            logger.warning("Gemini returned unparseable JSON; raw (first 300): %s", result_text[:300])
-            return _embedding_extraction(chunks or [], clusters, topic_hints, goal_title)
+        logger.error("[DEBUG] JSON parse error: %s", e)
+        logger.error("[DEBUG] Full raw response:\n%s", result_text)
+        raise ValueError(f"LLM returned invalid JSON: {e}") from e
 
     await set_cached(cache_key, result)
-    logger.info("Extracted %d topics for %s via Gemini", len(result.get("topics", [])), goal_title)
+    logger.info("Extracted %d topics for %s via LLM", len(result.get("topics", [])), goal_title)
     return result
 
 

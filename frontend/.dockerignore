@@ -1,0 +1,18 @@
+# Dependency directories
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+
+# IDE/OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Local env files
+.env*.local
+.env

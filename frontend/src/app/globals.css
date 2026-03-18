@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --foreground: #1a1a2e;
-  --background: #fafbff;
+  --foreground: #e0f0ff;
+  --background: #060a18;
 }
 
 body {
@@ -13,8 +13,51 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* Utility classes for the plan timeline */
-.block-done { @apply bg-green-100 border-green-400; }
-.block-partial { @apply bg-yellow-100 border-yellow-400; }
-.block-missed { @apply bg-red-100 border-red-400; }
-.block-scheduled { @apply bg-blue-50 border-blue-300; }
+/* Neon scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(103, 232, 249, 0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(103, 232, 249, 0.3); }
+
+/* No-scrollbar utility */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Dark-mode block status classes */
+.block-done { @apply bg-emerald-500/10 border-emerald-500/20 text-emerald-300; }
+.block-partial { @apply bg-amber-500/10 border-amber-500/20 text-amber-300; }
+.block-missed { @apply bg-red-500/10 border-red-500/20 text-red-300; }
+.block-upcoming { @apply bg-white/[0.04] border-white/[0.08] text-cyan-100 border; }
+.block-active { @apply bg-cyan-500/10 border-cyan-400/30 border-2 shadow-sm shadow-cyan-500/10 text-cyan-100; }
+
+/* Glassmorphic card utility */
+.glass-card {
+  @apply backdrop-blur-xl bg-white/[0.04] border border-white/[0.08] rounded-2xl;
+}
+
+/* Ambient glow background */
+.ambient-bg {
+  position: relative;
+}
+.ambient-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(6, 182, 212, 0.04), transparent),
+    radial-gradient(ellipse 60% 80% at 80% 90%, rgba(99, 102, 241, 0.05), transparent),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(147, 51, 234, 0.03), transparent);
+  pointer-events: none;
+}
+
+/* Form input dark styles */
+.dark-input {
+  @apply w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-3 py-2 text-cyan-50 placeholder-slate-500 focus:outline-none focus:border-cyan-500/40 focus:ring-1 focus:ring-cyan-500/20 transition;
+}
+.dark-select {
+  @apply w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-3 py-2 text-cyan-50 focus:outline-none focus:border-cyan-500/40 focus:ring-1 focus:ring-cyan-500/20 transition;
+}
+.dark-select option {
+  @apply bg-[#0c1225] text-cyan-50;
+}

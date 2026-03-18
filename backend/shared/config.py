@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -17,9 +18,15 @@ class Settings(BaseSettings):
     service_bus_queue_planner: str = "planner-jobs"
     service_bus_queue_executor: str = "executor-jobs"
 
-    # Gemini (free tier)
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    # LLM settings (model/provider-agnostic)
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4.1"
+
+    # Azure OpenAI (optional; when set, LangChain uses AzureChatOpenAI)
+    azure_openai_api_key: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_api_version: str = "2024-12-01-preview"
+    azure_openai_deployment: str = ""
 
     # SentenceTransformers (local embeddings for retriever)
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -49,7 +56,7 @@ class Settings(BaseSettings):
     # Calendar
     use_mock_calendar: bool = True
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env"), "extra": "ignore"}
 
 
 @lru_cache
