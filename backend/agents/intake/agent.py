@@ -11,9 +11,8 @@ import logging
 import re
 from datetime import datetime, timezone
 
-import google.generativeai as genai
-
 from shared.config import get_settings
+from shared.ai import run_prompt_via_graph
 from shared.models.goal import GoalCreate, GoalType, GoalCategory, GoalPriority
 from shared.models.intake import ManualGoalOverrides
 from shared.models.user import TimeWindow
@@ -195,14 +194,12 @@ async def parse_goal_from_prompt(
     prompt: str,
     deadline_override: datetime | None = None,
 ) -> tuple[GoalCreate, dict]:
-    """Use Gemini to parse scenario text into strict GoalCreate + metadata."""
+    """Use LLM to parse scenario text into strict GoalCreate + metadata."""
     settings = get_settings()
 
-    if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
-        raise ValueError("Gemini API key not configured for intake parsing")
-
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(settings.gemini_model)
+    active_key = settings.llm_api_key or settings.azure_openai_api_key
+    if not active_key or active_key == "your-llm-api-key-here":
+        raise ValueError("LLM API key not configured for intake parsing")
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     full_prompt = INTAKE_PROMPT.format(prompt=prompt, today=today)
@@ -210,25 +207,22 @@ async def parse_goal_from_prompt(
     logger.info("[INTAKE] Parsing prompt: %s", prompt[:100])
 
     try:
-        response = model.generate_content(
+        result_text = run_prompt_via_graph(
             full_prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.0,
-                max_output_tokens=20000,
-                response_mime_type="application/json",
-            ),
+            temperature=0.0,
+            json_mode=True,
         )
     except Exception as e:
-        logger.error("[INTAKE] Gemini API error: %s", e, exc_info=True)
+        logger.error("[INTAKE] LLM API error: %s", e, exc_info=True)
         raise ValueError("Intake model call failed") from e
 
-    result_text = response.text.strip()
+    result_text = result_text.strip()
     # Strip markdown fences if present
     result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
     result_text = re.sub(r"\n?```\s*$", "", result_text)
     result_text = result_text.strip()
 
-    logger.info("[INTAKE] Gemini raw response: %s", result_text[:300])
+    logger.info("[INTAKE] LLM raw response: %s", result_text[:300])
 
     try:
         data = json.loads(result_text)

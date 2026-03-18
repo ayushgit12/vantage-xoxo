@@ -8,11 +8,11 @@ from agents.retriever import estimator
 
 
 class _FakeModel:
-    def __init__(self, response_text: str):
-        self._response_text = response_text
+  def __init__(self, response_text: str):
+    self._response_text = response_text
 
-    def generate_content(self, prompt, generation_config=None):
-        return SimpleNamespace(text=self._response_text)
+  def run(self):
+    return self._response_text
 
 
 def test_estimation_prompt_formats_literal_json_example():
@@ -85,9 +85,16 @@ async def test_structured_estimation(monkeypatch):
 
     monkeypatch.setattr(estimator, "get_cached", _fake_get_cached)
     monkeypatch.setattr(estimator, "set_cached", _fake_set_cached)
-    monkeypatch.setattr(estimator.genai, "configure", lambda **kwargs: None)
-    monkeypatch.setattr(estimator.genai, "GenerativeModel", lambda model_name: _FakeModel(fake_response))
-    monkeypatch.setattr(estimator, "get_settings", lambda: SimpleNamespace(gemini_api_key="test-key", gemini_model="fake-model"))
+    monkeypatch.setattr(estimator, "run_prompt_via_graph", lambda *args, **kwargs: _FakeModel(fake_response).run())
+    monkeypatch.setattr(
+      estimator,
+      "get_settings",
+      lambda: SimpleNamespace(
+        llm_api_key="test-key",
+        llm_model="fake-model",
+        azure_openai_api_key="",
+      ),
+    )
 
     result = await estimator.estimate_hours(topics, raw_texts)
 
@@ -118,9 +125,16 @@ async def test_estimator_requires_all_topics(monkeypatch):
 
     monkeypatch.setattr(estimator, "get_cached", _fake_get_cached)
     monkeypatch.setattr(estimator, "set_cached", _fake_set_cached)
-    monkeypatch.setattr(estimator.genai, "configure", lambda **kwargs: None)
-    monkeypatch.setattr(estimator.genai, "GenerativeModel", lambda model_name: _FakeModel(fake_response))
-    monkeypatch.setattr(estimator, "get_settings", lambda: SimpleNamespace(gemini_api_key="test-key", gemini_model="fake-model"))
+    monkeypatch.setattr(estimator, "run_prompt_via_graph", lambda *args, **kwargs: _FakeModel(fake_response).run())
+    monkeypatch.setattr(
+      estimator,
+      "get_settings",
+      lambda: SimpleNamespace(
+        llm_api_key="test-key",
+        llm_model="fake-model",
+        azure_openai_api_key="",
+      ),
+    )
 
     with pytest.raises(ValueError, match="missing topics"):
         await estimator.estimate_hours(topics, raw_texts)

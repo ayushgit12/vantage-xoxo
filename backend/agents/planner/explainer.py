@@ -1,11 +1,11 @@
 """Plan explainer — optional LLM-generated explanation of planner decisions.
 
 This is the ONLY optional LLM call in the planner.
-Uses Gemini free tier. If no key, returns a simple template-based explanation.
+If no key, returns a simple template-based explanation.
 """
 
 import logging
-import google.generativeai as genai
+from shared.ai import run_prompt_via_graph
 from shared.models import Plan, GoalKnowledge
 from shared.config import get_settings
 from shared.cache.cache import get_cached, set_cached
@@ -33,27 +33,22 @@ async def explain_plan(plan: Plan, knowledge: GoalKnowledge) -> str:
 
     explanation += "Blocks are scheduled in your preferred time windows, respecting all constraints."
 
-    # Optionally enhance with Gemini
-    if settings.gemini_api_key:
+    # Optionally enhance with LLM
+    if settings.llm_api_key or settings.azure_openai_api_key:
         cache_key = {"op": "explain_plan", "plan_id": plan.plan_id}
         cached = await get_cached(cache_key)
         if cached:
             return cached.get("explanation", explanation)
 
         try:
-            genai.configure(api_key=settings.gemini_api_key)
-            model = genai.GenerativeModel(settings.gemini_model)
-            resp = model.generate_content(
+            llm_explanation = run_prompt_via_graph(
                 f"Explain this study plan concisely in 2-3 sentences: {explanation}",
-                generation_config=genai.GenerationConfig(
-                    temperature=0.0,
-                    max_output_tokens=20000,
-                ),
-            )
-            llm_explanation = resp.text.strip()
+                temperature=0.0,
+                json_mode=False,
+            ).strip()
             await set_cached(cache_key, {"explanation": llm_explanation})
             return llm_explanation
         except Exception as e:
-            logger.warning("Gemini explanation failed, using template: %s", e)
+            logger.warning("LLM explanation failed, using template: %s", e)
 
     return explanation

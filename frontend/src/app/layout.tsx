@@ -24,7 +24,7 @@ export default function RootLayout({
             </span>
           </a>
           <div className="flex gap-6 text-sm font-medium">
-            <a href="/goals" className="text-slate-400 hover:text-cyan-300 transition">Goals</a>
+            <a href="/goals" className="text-slate-400 hover:text-cyan-300 transition">Master Calendar</a>
             <a href="/goals/new" className="text-slate-400 hover:text-cyan-300 transition">New Goal</a>
             <a href="/goals/history" className="text-slate-400 hover:text-cyan-300 transition">Goals History</a>
             <a href="/embeddings" className="text-slate-400 hover:text-cyan-300 transition">Embeddings</a>

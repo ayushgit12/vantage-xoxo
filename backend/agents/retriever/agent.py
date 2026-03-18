@@ -71,7 +71,7 @@ async def run_retriever(
             goal_category=goal_doc.get("category", "other"),
         )
 
-        # 5. Estimate hours per topic via structured Gemini output
+        # 5. Estimate hours per topic via structured LLM output
         await _progress(4, "Estimating hours per topic…")
         topics_with_hours = await estimate_hours(extracted["topics"], raw_texts)
 

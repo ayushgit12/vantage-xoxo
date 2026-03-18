@@ -16,6 +16,15 @@ const fadeUp = {
 
 const agents = [
   {
+    icon: "�",
+    title: "Planner Agent",
+    description:
+      "Creates a deterministic schedule respecting your availability, deadlines, and preferences. No two runs differ.",
+    gradient: "from-indigo-500/20 to-violet-500/10",
+    border: "border-indigo-500/20",
+    glow: "group-hover:shadow-indigo-500/10",
+  },
+  {
     icon: "📥",
     title: "Retriever Agent",
     description:
@@ -23,15 +32,6 @@ const agents = [
     gradient: "from-cyan-500/20 to-blue-500/10",
     border: "border-cyan-500/20",
     glow: "group-hover:shadow-cyan-500/10",
-  },
-  {
-    icon: "📋",
-    title: "Planner Agent",
-    description:
-      "Creates a deterministic schedule respecting your availability, deadlines, and preferences. No two runs differ.",
-    gradient: "from-indigo-500/20 to-violet-500/10",
-    border: "border-indigo-500/20",
-    glow: "group-hover:shadow-indigo-500/10",
   },
   {
     icon: "🚀",
@@ -131,7 +131,7 @@ export default function Home() {
           >
             <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 transition-all duration-300 group-hover:brightness-110" />
             <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-cyan-400 to-blue-500" />
-            <span className="relative text-white">Create Your First Goal</span>
+            <span className="relative text-white">Create New Goal</span>
           </Link>
           <Link
             href="/goals"

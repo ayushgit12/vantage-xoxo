@@ -1,4 +1,4 @@
-"""Structured topic time estimation using Gemini plus code-side validation.
+"""Structured topic time estimation using LLM plus code-side validation.
 
 The model decides scope/difficulty/type/hours for each topic.
 Python validates shape, enforces sane ranges, and normalizes obvious inconsistencies.
@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Any
 
-import google.generativeai as genai
+from shared.ai import run_prompt_via_graph
 
 from shared.cache.cache import get_cached, set_cached
 from shared.config import get_settings
@@ -159,13 +159,14 @@ async def estimate_hours(
     topics: list[dict],
     raw_texts: list[str],
 ) -> list[dict]:
-    """Estimate hours for topics via Gemini structured output with strict validation."""
+    """Estimate hours for topics via structured LLM output with strict validation."""
     if not topics:
         return topics
 
     settings = get_settings()
-    if not settings.gemini_api_key or settings.gemini_api_key == "your-gemini-api-key-here":
-        raise ValueError("Gemini API key not configured for topic estimation")
+    active_key = settings.llm_api_key or settings.azure_openai_api_key
+    if not active_key or active_key == "your-llm-api-key-here":
+        raise ValueError("LLM API key not configured for topic estimation")
 
     summary = _material_summary(raw_texts)
     prompt_topics = [
@@ -191,8 +192,6 @@ async def estimate_hours(
         logger.info("Using cached structured hour estimates for %d topics", len(topics))
         result = cached
     else:
-        genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel(settings.gemini_model)
         prompt = ESTIMATION_PROMPT.format(
             total_chars=summary["total_chars"],
             approx_pages=summary["approx_pages"],
@@ -203,19 +202,16 @@ async def estimate_hours(
 
         logger.info("[ESTIMATOR] Requesting structured estimates for %d topics", len(topics))
         try:
-            response = model.generate_content(
+            result_text = run_prompt_via_graph(
                 prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.0,
-                    max_output_tokens=12000,
-                    response_mime_type="application/json",
-                ),
+                temperature=0.0,
+                json_mode=True,
             )
         except Exception as exc:
-            logger.error("[ESTIMATOR] Gemini estimation call failed: %s", exc, exc_info=True)
+            logger.error("[ESTIMATOR] LLM estimation call failed: %s", exc, exc_info=True)
             raise ValueError("Topic estimation model call failed") from exc
 
-        result_text = response.text.strip()
+        result_text = result_text.strip()
         result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
         result_text = re.sub(r"\n?```\s*$", "", result_text)
         result_text = result_text.strip()
@@ -273,7 +269,7 @@ async def estimate_hours(
         raise ValueError(f"Estimator response missing topics: {missing_titles}")
 
     logger.info(
-        "Estimated hours for %d topics via structured Gemini output: %.1fh total",
+        "Estimated hours for %d topics via structured LLM output: %.1fh total",
         len(enriched_topics),
         sum(t.get("est_hours", 0.0) for t in enriched_topics),
     )

@@ -18,9 +18,15 @@ class Settings(BaseSettings):
     service_bus_queue_planner: str = "planner-jobs"
     service_bus_queue_executor: str = "executor-jobs"
 
-    # Gemini (free tier)
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    # LLM settings (model/provider-agnostic)
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4.1"
+
+    # Azure OpenAI (optional; when set, LangChain uses AzureChatOpenAI)
+    azure_openai_api_key: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_api_version: str = "2024-12-01-preview"
+    azure_openai_deployment: str = ""
 
     # SentenceTransformers (local embeddings for retriever)
     embedding_model: str = "all-MiniLM-L6-v2"

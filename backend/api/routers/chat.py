@@ -3,7 +3,6 @@
 import logging
 from datetime import datetime, timezone
 
-import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -11,6 +10,7 @@ import numpy as np
 
 from api.dependencies import get_current_user_id
 from agents.retriever.embeddings import embed_texts, compute_similarity
+from shared.ai import stream_chat_via_langchain
 from shared.config import get_settings
 from shared.db.repositories import goals_repo, knowledge_repo, plans_repo
 
@@ -106,8 +106,8 @@ async def chat_message(
 ):
     """Stream a chat response from Ryuk using RAG over the user's data."""
     settings = get_settings()
-    if not settings.gemini_api_key:
-        raise HTTPException(status_code=500, detail="Gemini API key not configured")
+    if not (settings.llm_api_key or settings.azure_openai_api_key):
+        raise HTTPException(status_code=500, detail="LLM API key not configured")
 
     # Fetch all user data
     all_goals = await goals_repo.find_many({"user_id": user_id})
@@ -130,29 +130,17 @@ async def chat_message(
     now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y %I:%M %p UTC")
     system = SYSTEM_PROMPT.format(context=context, now=now)
 
-    # Build conversation for Gemini
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(
-        settings.gemini_model,
-        system_instruction=system,
-    )
-
-    # Convert history to Gemini format
-    gemini_history = []
-    for msg in body.history:
-        role = "user" if msg.get("role") == "user" else "model"
-        gemini_history.append({"role": role, "parts": [msg.get("content", "")]})
-
-    chat = model.start_chat(history=gemini_history)
-
     async def stream_response():
         try:
-            response = chat.send_message(body.message, stream=True)
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
+            for delta in stream_chat_via_langchain(
+                system_prompt=system,
+                history=body.history,
+                user_message=body.message,
+                temperature=0.2,
+            ):
+                yield delta
         except Exception as e:
-            logger.error("Gemini streaming error: %s", e)
+            logger.error("LLM streaming error: %s", e)
             yield f"\n[Error: {e}]"
 
     return StreamingResponse(stream_response(), media_type="text/plain")
