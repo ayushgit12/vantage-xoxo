@@ -30,7 +30,6 @@ torch>=2.10.0
 semantic-kernel>=1.40.0
 
 # YouTube transcript fetching
-youtube-transcript-api>=1.2.0
 yt-dlp>=2026.3.0
 
 # Microsoft Graph (calendar sync)

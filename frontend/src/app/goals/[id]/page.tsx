@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -49,6 +49,7 @@ export default function UnifiedGoalDashboard() {
   const [editTitle, setEditTitle] = useState("");
   const [editHours, setEditHours] = useState("");
   const [ingestStep, setIngestStep] = useState(0);
+  const [selectedSourceKey, setSelectedSourceKey] = useState<string | null>(null);
 
   const isHabitGoal = goal?.goal_type === "habit";
 
@@ -270,6 +271,67 @@ export default function UnifiedGoalDashboard() {
 
     return `${days} at ${start} for ${duration} min`;
   }
+
+  const sourceItems = useMemo(() => {
+    if (!goal || isHabitGoal) return [];
+
+    const refs = knowledge?.resource_refs ?? [];
+    const refsByUrl = new Map(refs.map((ref) => [ref.url, ref]));
+
+    const uploaded = goal.uploaded_file_ids.map((file, i) => {
+      const fileName = file.split("/").pop() || file;
+      const matchedRef = refs.find(
+        (ref) =>
+          ref.source_type === "pdf" &&
+          (ref.title === fileName || ref.url.includes(fileName)),
+      );
+
+      return {
+        key: `file-${i}`,
+        title: fileName,
+        subtitle: "Uploaded PDF",
+        url: matchedRef?.url,
+        transcript: matchedRef?.transcript || "",
+        isYoutube: false,
+      };
+    });
+
+    const urls = goal.material_urls.map((url, i) => {
+      const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
+      const matchedRef = refsByUrl.get(url);
+      let host = url;
+
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        host = url;
+      }
+
+      return {
+        key: `url-${i}`,
+        title: matchedRef?.title || host,
+        subtitle: url,
+        url,
+        transcript: matchedRef?.transcript || "",
+        isYoutube,
+      };
+    });
+
+    return [...uploaded, ...urls];
+  }, [goal, isHabitGoal, knowledge]);
+
+  useEffect(() => {
+    if (sourceItems.length === 0) {
+      if (selectedSourceKey !== null) setSelectedSourceKey(null);
+      return;
+    }
+
+    if (selectedSourceKey && !sourceItems.some((item) => item.key === selectedSourceKey)) {
+      setSelectedSourceKey(null);
+    }
+  }, [sourceItems, selectedSourceKey]);
+
+  const selectedSource = sourceItems.find((item) => item.key === selectedSourceKey) ?? null;
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading dashboard...</div>;
   if (!goal) return <div className="p-8 text-center text-red-400">Goal not found</div>;
@@ -715,36 +777,57 @@ export default function UnifiedGoalDashboard() {
           )}
 
           {/* Sources */}
-          {!isHabitGoal && (goal.uploaded_file_ids.length > 0 || goal.material_urls.length > 0) ? (
+          {!isHabitGoal && sourceItems.length > 0 ? (
             <div>
               <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">Sources</h3>
               <div className="space-y-3">
-                {goal.uploaded_file_ids.map((file, i) => (
-                  <div key={i} className="flex items-center p-3 glass-card">
-                    <div className="w-8 h-8 rounded bg-red-500/10 text-red-400 flex items-center justify-center mr-3 shrink-0">
-                      <FileText className="w-4 h-4" />
+                {sourceItems.map((source) => (
+                  <button
+                    key={source.key}
+                    type="button"
+                    onClick={() =>
+                      setSelectedSourceKey((current) =>
+                        current === source.key ? null : source.key,
+                      )
+                    }
+                    className={`w-full flex items-center p-3 glass-card text-left transition border ${
+                      selectedSourceKey === source.key
+                        ? "border-cyan-500/30 bg-cyan-500/10"
+                        : "border-white/[0.06] hover:border-cyan-500/20"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${source.isYoutube ? "bg-blue-500/10 text-blue-400" : "bg-white/[0.04] text-slate-400"}`}>
+                      {source.isYoutube ? <Video className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                     </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-semibold text-cyan-100 truncate">{file.split('/').pop()}</p>
-                      <p className="text-[10px] text-slate-500">Uploaded PDF</p>
+                    <div className="overflow-hidden min-w-0">
+                      <p className="text-xs font-semibold text-cyan-100 truncate">{source.title}</p>
+                      <p className="text-[10px] text-slate-500 truncate">{source.subtitle}</p>
                     </div>
-                  </div>
+                  </button>
                 ))}
-                {goal.material_urls.map((url, i) => {
-                  const isYoutube = url.includes("youtube.com") || url.includes("youtu.be");
-                  return (
-                    <div key={i} className="flex items-center p-3 glass-card">
-                      <div className={`w-8 h-8 rounded flex items-center justify-center mr-3 shrink-0 ${isYoutube ? 'bg-blue-500/10 text-blue-400' : 'bg-white/[0.04] text-slate-400'}`}>
-                        {isYoutube ? <Video className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                      </div>
-                      <div className="overflow-hidden">
-                        <p className="text-xs font-semibold text-cyan-100 truncate">{new URL(url).hostname}</p>
-                        <p className="text-[10px] text-slate-500 truncate">{url}</p>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
+
+              {selectedSource ? (
+                <div className="mt-4 glass-card p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Transcript</p>
+                  <p className="text-xs font-semibold text-cyan-100 mb-1 truncate" title={selectedSource.title}>{selectedSource.title}</p>
+                  <p className="text-[10px] text-slate-500 mb-3 truncate">{selectedSource.url || selectedSource.subtitle}</p>
+
+                  {selectedSource.transcript ? (
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+                      <p className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedSource.transcript}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Transcript is not available for this source yet. Re-run material parsing if this source was added recently.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              
+              <div className="mt-2 text-[10px] text-slate-600">Click a source to view its fetched transcript.</div>
             </div>
           ) : null}
         </div>

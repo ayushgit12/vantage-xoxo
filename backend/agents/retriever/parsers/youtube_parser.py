@@ -1,10 +1,14 @@
 """YouTube metadata and transcript parser."""
 
+import html
 import logging
 import re
-import httpx
+import tempfile
+from pathlib import Path
 
-from youtube_transcript_api import YouTubeTranscriptApi
+import httpx
+import yt_dlp
+
 from shared.models.knowledge import ResourceRef
 
 logger = logging.getLogger(__name__)
@@ -21,19 +25,88 @@ def _extract_video_id(url: str) -> str | None:
     return None
 
 
-def _fetch_transcript(video_id: str) -> str | None:
-    """Fetch transcript text using youtube-transcript-api."""
-    try:
-        api = YouTubeTranscriptApi()
-        # Try English first, then fall back to any available language
+def _clean_caption_text(raw_caption: str) -> str:
+    """Convert VTT/SRT-like caption content into plain transcript text."""
+    lines: list[str] = []
+    prev = ""
+
+    for raw_line in raw_caption.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        # Remove common caption metadata and timing/index lines
+        if line in {"WEBVTT", "NOTE"}:
+            continue
+        if line.isdigit():
+            continue
+        if "-->" in line:
+            continue
+        if line.startswith("Kind:") or line.startswith("Language:"):
+            continue
+
+        # Strip inline markup like <c>, <i>, <v Speaker>
+        line = re.sub(r"<[^>]+>", "", line)
+        line = html.unescape(line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if not line:
+            continue
+
+        # Captions often repeat consecutive lines between overlapping cues
+        if line == prev:
+            continue
+        prev = line
+        lines.append(line)
+
+    return " ".join(lines)
+
+
+def _fetch_captions_with_ytdlp(video_id: str) -> str | None:
+    """Fetch YouTube captions with yt-dlp and return cleaned transcript text."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    with tempfile.TemporaryDirectory(prefix="yt_captions_") as temp_dir:
+        outtmpl = str(Path(temp_dir) / "%(id)s.%(ext)s")
+        ydl_opts = {
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": ["en.*", "en"],
+            "subtitlesformat": "vtt/srt/best",
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "no_warnings": True,
+        }
+
         try:
-            transcript = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
-        except Exception:
-            transcript = api.fetch(video_id)
-        lines = [snippet.text for snippet in transcript.snippets]
-        return " ".join(lines)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(video_url, download=True)
+        except Exception as e:
+            logger.warning("yt-dlp caption download failed for %s: %s", video_id, e)
+            return None
+
+        caption_files = sorted(Path(temp_dir).glob(f"{video_id}*.vtt"))
+        if not caption_files:
+            caption_files = sorted(Path(temp_dir).glob(f"{video_id}*.srt"))
+
+        for caption_path in caption_files:
+            try:
+                raw_caption = caption_path.read_text(encoding="utf-8", errors="ignore")
+                cleaned = _clean_caption_text(raw_caption)
+                if cleaned:
+                    return cleaned
+            except Exception as e:
+                logger.warning("Failed to parse caption file %s: %s", caption_path, e)
+
+    return None
+
+
+def _fetch_transcript(video_id: str) -> str | None:
+    """Fetch transcript text using yt-dlp captions."""
+    try:
+        return _fetch_captions_with_ytdlp(video_id)
     except Exception as e:
-        logger.warning("Could not fetch transcript for %s: %s", video_id, e)
+        logger.warning("Could not fetch transcript for %s via yt-dlp: %s", video_id, e)
         return None
 
 

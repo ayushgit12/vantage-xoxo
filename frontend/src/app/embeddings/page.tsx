@@ -1,21 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
-import dynamic from "next/dynamic";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { BACKEND_URL } from "@/lib/env";
-
-const EmbeddingsScene = dynamic(() => import("./EmbeddingsScene"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-10 h-10 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin" />
-        <p className="text-cyan-300/60 text-sm tracking-wider">Loading 3D scene…</p>
-      </div>
-    </div>
-  ),
-});
+import EmbeddingsScene from "@/app/embeddings/EmbeddingsScene";
 
 /* ── Types ─────────────────────────────────────────── */
 interface EmbeddingPoint {
@@ -231,9 +219,7 @@ export default function EmbeddingsPage() {
             </div>
           ) : data ? (
             <>
-              <Suspense fallback={null}>
-                <EmbeddingsScene data={data} onPointHover={handlePointHover} />
-              </Suspense>
+              <EmbeddingsScene data={data} onPointHover={handlePointHover} />
 
               {/* Bottom stats */}
               <div className="absolute bottom-5 left-5 z-20">

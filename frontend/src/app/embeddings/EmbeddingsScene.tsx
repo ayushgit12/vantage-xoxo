@@ -1,11 +1,9 @@
 "use client";
 
-import { useRef, useState, useMemo, useCallback } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Text, Line } from "@react-three/drei";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-/* ── Types ─────────────────────────────────────────── */
 interface EmbeddingPoint {
   topic_id: string;
   title: string;
@@ -39,221 +37,58 @@ interface EmbeddingData {
   goals_count?: number;
 }
 
-/* ── Glow Particle ─────────────────────────────────── */
-function Particle({
-  point,
-  index,
-  isHovered,
-  isNeighbor,
-  isConnected,
-  onHover,
-  onUnhover,
-  goalColorMap,
-}: {
-  point: EmbeddingPoint;
-  index: number;
-  isHovered: boolean;
-  isNeighbor: boolean;
-  isConnected: boolean;
-  onHover: (i: number) => void;
-  onUnhover: () => void;
-  goalColorMap: Record<string, string>;
-}) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const glowRef = useRef<THREE.Mesh>(null!);
-  const baseScale = 0.04 + Math.min(point.est_hours / 30, 0.06);
+interface PositionedPoint {
+  source: EmbeddingPoint;
+  position: THREE.Vector3;
+  color: THREE.Color;
+}
 
-  const baseColor = goalColorMap[point.goal_id || "default"] || "#38bdf8";
+function hashTopicId(input: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
 
-  const hsl = useMemo(() => {
-    const c = new THREE.Color(baseColor);
-    const hslObj = { h: 0, s: 0, l: 0 };
-    c.getHSL(hslObj);
-    return hslObj;
-  }, [baseColor]);
+function normalizePoints(points: EmbeddingPoint[]): PositionedPoint[] {
+  if (points.length === 0) return [];
 
-  useFrame((state) => {
-    if (!meshRef.current) return;
-    const t = state.clock.elapsedTime;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const zs = points.map((p) => p.z);
 
-    // Idle float
-    const floatY = Math.sin(t * 0.5 + index * 0.7) * 0.008;
-    meshRef.current.position.y = point.y + floatY;
-    if (glowRef.current) glowRef.current.position.y = point.y + floatY;
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
 
-    // Scale pulse
-    const targetScale = isHovered ? baseScale * 2.2 : isNeighbor ? baseScale * 1.5 : baseScale;
-    const current = meshRef.current.scale.x;
-    const next = THREE.MathUtils.lerp(current, targetScale, 0.12);
-    meshRef.current.scale.setScalar(next);
-    if (glowRef.current) glowRef.current.scale.setScalar(next * 3);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const maxSpan = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-6);
+
+  return points.map((point, index) => {
+    const hash = hashTopicId(point.topic_id || String(index));
+    const hue = (hash % 360) / 360;
+    const sat = 0.65 + ((hash >> 8) % 20) / 100;
+    const light = 0.48 + ((hash >> 16) % 14) / 100;
+
+    return {
+      source: point,
+      position: new THREE.Vector3(
+        ((point.x - centerX) / maxSpan) * 5.2,
+        ((point.y - centerY) / maxSpan) * 5.2,
+        ((point.z - centerZ) / maxSpan) * 5.2,
+      ),
+      color: new THREE.Color().setHSL(hue, Math.min(sat, 0.9), Math.min(light, 0.7)),
+    };
   });
-
-  const coreColor = isHovered
-    ? new THREE.Color().setHSL(hsl.h, 1, 0.75)
-    : isNeighbor
-    ? new THREE.Color().setHSL(hsl.h, 0.9, 0.65)
-    : new THREE.Color().setHSL(hsl.h, 0.8, 0.55);
-
-  const glowColor = new THREE.Color().setHSL(hsl.h, 1, 0.5);
-
-  const dimmed = !isHovered && !isNeighbor && !isConnected;
-
-  return (
-    <group>
-      {/* Glow sprite */}
-      <mesh ref={glowRef} position={[point.x, point.y, point.z]}>
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshBasicMaterial
-          color={glowColor}
-          transparent
-          opacity={isHovered ? 0.18 : dimmed ? 0.02 : 0.06}
-          depthWrite={false}
-        />
-      </mesh>
-
-      {/* Core sphere */}
-      <mesh
-        ref={meshRef}
-        position={[point.x, point.y, point.z]}
-        onPointerOver={(e) => { e.stopPropagation(); onHover(index); }}
-        onPointerOut={onUnhover}
-      >
-        <sphereGeometry args={[1, 32, 32]} />
-        <meshStandardMaterial
-          color={coreColor}
-          emissive={coreColor}
-          emissiveIntensity={isHovered ? 2.5 : isNeighbor ? 1.5 : 0.6}
-          roughness={0.15}
-          metalness={0.9}
-          transparent
-          opacity={dimmed ? 0.25 : 1}
-        />
-      </mesh>
-    </group>
-  );
 }
 
-/* ── Edges ─────────────────────────────────────────── */
-function Edges({
-  edges,
-  pointMap,
-  hoveredId,
-  neighborIds,
-}: {
-  edges: Edge[];
-  pointMap: Record<string, EmbeddingPoint>;
-  hoveredId: string | null;
-  neighborIds: Set<string>;
-}) {
-  return (
-    <>
-      {edges.map((edge, i) => {
-        const from = pointMap[edge.from];
-        const to = pointMap[edge.to];
-        if (!from || !to) return null;
-
-        const isActive =
-          hoveredId === edge.from ||
-          hoveredId === edge.to ||
-          neighborIds.has(edge.from) ||
-          neighborIds.has(edge.to);
-
-        const dimmed = hoveredId && !isActive;
-
-        const color = edge.type === "prereq" ? "#60a5fa" : "#a78bfa";
-        const opacity = dimmed ? 0.03 : isActive ? 0.6 : 0.1;
-
-        return (
-          <Line
-            key={i}
-            points={[
-              [from.x, from.y, from.z],
-              [to.x, to.y, to.z],
-            ]}
-            color={color}
-            lineWidth={edge.type === "prereq" ? 1.5 : 0.8}
-            transparent
-            opacity={opacity}
-            dashed={edge.type === "similar"}
-            dashSize={0.03}
-            gapSize={0.02}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-/* ── Hover Label ───────────────────────────────────── */
-function HoverLabel({ point }: { point: EmbeddingPoint }) {
-  const { camera } = useThree();
-  const groupRef = useRef<THREE.Group>(null!);
-
-  useFrame(() => {
-    if (groupRef.current) {
-      groupRef.current.quaternion.copy(camera.quaternion);
-    }
-  });
-
-  return (
-    <group ref={groupRef} position={[point.x, point.y + 0.12, point.z]}>
-      {/* bg panel */}
-      <mesh position={[0, 0, -0.001]}>
-        <planeGeometry args={[0.5, 0.1]} />
-        <meshBasicMaterial color="#0f172a" transparent opacity={0.85} />
-      </mesh>
-      <Text
-        fontSize={0.028}
-        color="#e0f2fe"
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={0.45}
-      >
-        {point.title}
-      </Text>
-      <Text
-        fontSize={0.016}
-        color="#7dd3fc"
-        anchorX="center"
-        anchorY="middle"
-        position={[0, -0.03, 0]}
-      >
-        {point.est_hours}h · {point.neighbors.length} neighbors
-      </Text>
-    </group>
-  );
-}
-
-/* ── Grid / Environment ───────────────────────────── */
-function SceneEnvironment() {
-  const gridRef = useRef<THREE.GridHelper>(null!);
-
-  useFrame((state) => {
-    if (gridRef.current) {
-      (gridRef.current.material as THREE.Material).opacity =
-        0.06 + Math.sin(state.clock.elapsedTime * 0.3) * 0.02;
-    }
-  });
-
-  return (
-    <>
-      <ambientLight intensity={0.15} />
-      <pointLight position={[3, 3, 3]} intensity={0.5} color="#38bdf8" />
-      <pointLight position={[-3, -2, -3]} intensity={0.3} color="#818cf8" />
-      <pointLight position={[0, 4, 0]} intensity={0.2} color="#e0f2fe" />
-      <gridHelper
-        ref={gridRef}
-        args={[4, 20, "#1e3a5f", "#1e3a5f"]}
-        position={[0, -1.2, 0]}
-        material-transparent
-        material-opacity={0.08}
-      />
-    </>
-  );
-}
-
-/* ── Main Scene ────────────────────────────────────── */
 export default function EmbeddingsScene({
   data,
   onPointHover,
@@ -261,88 +96,261 @@ export default function EmbeddingsScene({
   data: EmbeddingData;
   onPointHover?: (point: EmbeddingPoint | null) => void;
 }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const pointMap = useMemo(() => {
-    const m: Record<string, EmbeddingPoint> = {};
-    data.points.forEach((p) => (m[p.topic_id] = p));
-    return m;
-  }, [data.points]);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-  const { hoveredPoint, neighborIds, connectedIds } = useMemo(() => {
-    if (hoveredIndex === null) return { hoveredPoint: null, neighborIds: new Set<string>(), connectedIds: new Set<string>() };
-    const hp = data.points[hoveredIndex];
-    const nIds = new Set(hp.neighbors.map((n) => n.topic_id));
-    const cIds = new Set<string>();
-    data.edges.forEach((e) => {
-      if (e.from === hp.topic_id) cIds.add(e.to);
-      if (e.to === hp.topic_id) cIds.add(e.from);
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(56, 1, 0.01, 100);
+    camera.position.set(0, 0.8, 6.2);
+
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance",
     });
-    return { hoveredPoint: hp, neighborIds: nIds, connectedIds: cIds };
-  }, [hoveredIndex, data]);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(container.clientWidth, container.clientHeight, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
 
-  const goalColorMap = useMemo(() => {
-    const palette = ["#38bdf8", "#818cf8", "#34d399", "#f472b6", "#fb923c", "#facc15", "#a78bfa", "#22d3ee"];
-    const goals = [...new Set(data.points.map((p) => p.goal_id || "default"))];
-    const m: Record<string, string> = {};
-    goals.forEach((g, i) => (m[g] = palette[i % palette.length]));
-    return m;
-  }, [data.points]);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.65;
+    controls.zoomSpeed = 0.9;
+    controls.enablePan = false;
+    controls.minDistance = 2;
+    controls.maxDistance = 14;
 
-  const handleHover = useCallback(
-    (i: number) => {
-      setHoveredIndex(i);
-      onPointHover?.(data.points[i]);
-    },
-    [data.points, onPointHover]
-  );
+    scene.add(new THREE.AmbientLight("#a5b4fc", 0.6));
 
-  const handleUnhover = useCallback(() => {
-    setHoveredIndex(null);
-    onPointHover?.(null);
-  }, [onPointHover]);
+    const keyLight = new THREE.PointLight("#38bdf8", 0.8, 40);
+    keyLight.position.set(4, 4, 5);
+    scene.add(keyLight);
 
-  return (
-    <Canvas
-      camera={{ position: [0, 0.5, 2.5], fov: 50 }}
-      gl={{ antialias: true, alpha: true }}
-      style={{ background: "transparent" }}
-      onPointerMissed={handleUnhover}
-    >
-      <SceneEnvironment />
+    const fillLight = new THREE.PointLight("#818cf8", 0.45, 35);
+    fillLight.position.set(-4, -2, -4);
+    scene.add(fillLight);
 
-      <Edges
-        edges={data.edges}
-        pointMap={pointMap}
-        hoveredId={hoveredPoint?.topic_id ?? null}
-        neighborIds={neighborIds}
-      />
+    const positioned = normalizePoints(data.points);
+    const pointIndexById = new Map<string, number>();
+    positioned.forEach((p, i) => pointIndexById.set(p.source.topic_id, i));
 
-      {data.points.map((point, i) => (
-        <Particle
-          key={point.topic_id}
-          point={point}
-          index={i}
-          isHovered={hoveredIndex === i}
-          isNeighbor={neighborIds.has(point.topic_id)}
-          isConnected={connectedIds.has(point.topic_id)}
-          onHover={handleHover}
-          onUnhover={handleUnhover}
-          goalColorMap={goalColorMap}
-        />
-      ))}
+    const neighborIndicesByPoint = new Map<number, Set<number>>();
+    positioned.forEach((point, i) => {
+      const neighbors = new Set<number>();
+      point.source.neighbors.forEach((neighbor) => {
+        const neighborIndex = pointIndexById.get(neighbor.topic_id);
+        if (neighborIndex !== undefined) neighbors.add(neighborIndex);
+      });
+      neighborIndicesByPoint.set(i, neighbors);
+    });
 
-      {hoveredPoint && <HoverLabel point={hoveredPoint} />}
+    const baseScales = positioned.map(
+      (point) => 0.06 + Math.min(point.source.est_hours / 40, 0.05),
+    );
+    const baseColors = positioned.map((point) => point.color.clone());
+    const scratch = new THREE.Object3D();
 
-      <OrbitControls
-        enableDamping
-        dampingFactor={0.05}
-        rotateSpeed={0.6}
-        zoomSpeed={0.8}
-        minDistance={0.8}
-        maxDistance={6}
-        enablePan={false}
-      />
-    </Canvas>
-  );
+    const pointGeometry = new THREE.SphereGeometry(1, 14, 14);
+    const pointMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      emissive: "#0ea5e9",
+      emissiveIntensity: 0.28,
+      metalness: 0.45,
+      roughness: 0.25,
+      transparent: true,
+      opacity: 0.96,
+    });
+
+    const pointsObject = new THREE.InstancedMesh(pointGeometry, pointMaterial, positioned.length);
+    pointsObject.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    pointsObject.castShadow = false;
+    pointsObject.receiveShadow = false;
+    scene.add(pointsObject);
+
+    const setPointTransform = (index: number, scale: number) => {
+      scratch.position.copy(positioned[index].position);
+      scratch.scale.setScalar(scale);
+      scratch.updateMatrix();
+      pointsObject.setMatrixAt(index, scratch.matrix);
+    };
+
+    let activeNeighborIndices = new Set<number>();
+    let hoveredIndex: number | null = null;
+
+    const applyHoverVisuals = (index: number | null) => {
+      hoveredIndex = index;
+      activeNeighborIndices = index !== null ? (neighborIndicesByPoint.get(index) ?? new Set<number>()) : new Set<number>();
+
+      for (let i = 0; i < positioned.length; i += 1) {
+        let scale = baseScales[i];
+        const color = baseColors[i].clone();
+
+        if (index !== null) {
+          if (i === index) {
+            scale *= 2.15;
+            color.lerp(new THREE.Color("#ffffff"), 0.35);
+          } else if (activeNeighborIndices.has(i)) {
+            scale *= 1.45;
+            color.lerp(new THREE.Color("#ffffff"), 0.18);
+          } else {
+            scale *= 0.92;
+            color.multiplyScalar(0.42);
+          }
+        }
+
+        setPointTransform(i, scale);
+        pointsObject.setColorAt(i, color);
+      }
+
+      if (pointsObject.instanceColor) {
+        pointsObject.instanceColor.needsUpdate = true;
+      }
+      pointsObject.instanceMatrix.needsUpdate = true;
+      edgeMaterial.opacity = index === null ? 0.2 : 0.1;
+    };
+
+    const edgeGeometry = new THREE.BufferGeometry();
+    const edgeVertices: number[] = [];
+    data.edges.forEach((edge) => {
+      const fromIdx = pointIndexById.get(edge.from);
+      const toIdx = pointIndexById.get(edge.to);
+      if (fromIdx === undefined || toIdx === undefined) return;
+
+      const from = positioned[fromIdx].position;
+      const to = positioned[toIdx].position;
+
+      edgeVertices.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    });
+
+    edgeGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(edgeVertices, 3),
+    );
+    const edgeMaterial = new THREE.LineBasicMaterial({
+      color: "#60a5fa",
+      transparent: true,
+      opacity: 0.2,
+    });
+
+    const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    scene.add(edgeLines);
+
+    const hoverHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 16, 16),
+      new THREE.MeshBasicMaterial({
+        color: "#e0f2fe",
+        transparent: true,
+        opacity: 0.24,
+      }),
+    );
+    hoverHalo.visible = false;
+    scene.add(hoverHalo);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let rafId = 0;
+    let lastFrame = 0;
+
+    applyHoverVisuals(null);
+
+    const renderFrame = (now: number) => {
+      rafId = requestAnimationFrame(renderFrame);
+
+      // Cap at ~45 FPS for smoother but lighter rendering.
+      if (now - lastFrame < 22) return;
+      lastFrame = now;
+
+      if (hoveredIndex !== null) {
+        const pulse = 1 + Math.sin(now * 0.0075) * 0.06;
+        setPointTransform(hoveredIndex, baseScales[hoveredIndex] * 2.15 * pulse);
+        pointsObject.instanceMatrix.needsUpdate = true;
+        hoverHalo.scale.setScalar(pulse);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    };
+
+    const updateHover = (clientX: number, clientY: number) => {
+      const bounds = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
+      pointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObject(pointsObject, false);
+
+      const index = typeof hits[0]?.instanceId === "number" ? hits[0].instanceId : null;
+      if (index === hoveredIndex) return;
+
+      if (index === null) {
+        applyHoverVisuals(null);
+        hoverHalo.visible = false;
+        onPointHover?.(null);
+        return;
+      }
+
+      applyHoverVisuals(index);
+      const selected = positioned[index];
+      hoverHalo.visible = true;
+      hoverHalo.position.copy(selected.position);
+      onPointHover?.(selected.source);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      updateHover(event.clientX, event.clientY);
+    };
+
+    const onPointerLeave = () => {
+      applyHoverVisuals(null);
+      hoverHalo.visible = false;
+      onPointHover?.(null);
+    };
+
+    const resize = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width <= 0 || height <= 0) return;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(width, height, false);
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave);
+
+    resize();
+    rafId = requestAnimationFrame(renderFrame);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+
+      controls.dispose();
+      pointGeometry.dispose();
+      pointMaterial.dispose();
+      edgeGeometry.dispose();
+      edgeMaterial.dispose();
+      hoverHalo.geometry.dispose();
+      (hoverHalo.material as THREE.Material).dispose();
+
+      renderer.dispose();
+      if (renderer.domElement.parentElement === container) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, [data, onPointHover]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
 }
