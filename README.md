@@ -32,7 +32,7 @@ Frontend (Next.js) → API Gateway (FastAPI) → Service Bus → Agent Workers
 
 | Component | Uses LLM? | Details |
 |---|---|---|
-| Retriever: topic extraction | YES | Azure OpenAI GPT-4o-mini, cached |
+| Retriever: topic extraction | YES | Azure OpenAI GPT-4.1, cached |
 | Retriever: hour estimation | NO | Rule-based heuristics |
 | Planner: scheduling | NO | Deterministic algorithm, seeded |
 | Planner: explanation | Optional | Cached |

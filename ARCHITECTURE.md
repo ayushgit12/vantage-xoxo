@@ -16,7 +16,7 @@ User → API Gateway → Retriever (produces GoalKnowledge)
                    → Executor (syncs calendar, tracks progress)
 ```
 
-### LLM Usage (Azure OpenAI GPT-4o-mini, cached)
+### LLM Usage (Azure OpenAI GPT-4.1, cached)
 - Retriever: topic/milestone extraction from chunked text
 - Retriever: web supplementation (max 3 sources, only if confidence < 0.6)
 - Planner explanation (optional)
