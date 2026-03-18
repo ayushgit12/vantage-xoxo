@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { BACKEND_URL } from "@/lib/env";
 
 const EmbeddingsScene = dynamic(() => import("./EmbeddingsScene"), {
   ssr: false,
@@ -56,10 +57,8 @@ interface GoalOption {
   title: string;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
     headers: { "X-User-Id": "demo-user-001" },
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);

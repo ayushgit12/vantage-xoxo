@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/env";
 
 interface Message {
   role: "user" | "assistant";
@@ -46,7 +45,7 @@ export default function ChatBot() {
     setStreaming(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat/message`, {
+      const res = await fetch(`${BACKEND_URL}/api/chat/message`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

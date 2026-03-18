@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { BACKEND_URL } from "./env";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
@@ -7,7 +7,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
     ...options,
     headers,
   });
@@ -56,7 +56,7 @@ export async function triggerIngestStream(
   onProgress: (step: number, label: string, total: number) => void,
 ): Promise<void> {
   const res = await fetch(
-    `${API_BASE}/api/retriever/ingest-stream?goal_id=${goalId}`,
+    `${BACKEND_URL}/api/retriever/ingest-stream?goal_id=${goalId}`,
     { method: "POST", credentials: "include" },
   );
   if (!res.ok) throw new Error(`Ingest stream failed: ${res.status}`);
