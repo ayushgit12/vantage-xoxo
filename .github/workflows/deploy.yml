@@ -23,12 +23,12 @@ jobs:
           cd backend
           pip install -r requirements.txt
 
-      - name: Zip artifact
+      - name: Zip backend
         run: |
           cd backend
           zip -r ../release.zip .
 
-      - name: Deploy to Azure Web App
+      - name: Deploy to Azure
         uses: azure/webapps-deploy@v3
         with:
           app-name: vantage-backend
