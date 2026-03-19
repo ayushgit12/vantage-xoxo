@@ -24,6 +24,21 @@ interface GlobalBlock extends MicroBlock {
   topicTitle: string;
 }
 
+function formatDurationBadge(durationMin: number): string {
+  if (durationMin < 60) {
+    return `${durationMin} MIN`;
+  }
+
+  const hours = Math.floor(durationMin / 60);
+  const minutes = durationMin % 60;
+
+  if (minutes === 0) {
+    return `${hours} HR`;
+  }
+
+  return `${hours} HR ${minutes} MIN`;
+}
+
 export default function AllGoalsDashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,7 +265,7 @@ export default function AllGoalsDashboard() {
                       </h4>
                       <div className="flex items-center gap-2 text-xs font-medium opacity-80">
                         <span className="px-1.5 py-0.5 rounded bg-white/[0.06] uppercase font-bold tracking-wider">
-                          {block.duration_min >= 60 ? `${block.duration_min/60} HRS` : `${block.duration_min} MIN`}
+                          {formatDurationBadge(block.duration_min)}
                         </span>
                         <span className="opacity-70 flex items-center">
                           <span className="mx-1">•</span>
