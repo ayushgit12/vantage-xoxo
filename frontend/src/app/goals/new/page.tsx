@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createGoalFromScenario, getScenarioSuggestions, type TimeWindow } from "@/lib/api";
 import { toDeadlineIso } from "@/lib/schedule";
@@ -18,6 +18,8 @@ export default function NewGoalPage() {
   const [scenarioSuggestions, setScenarioSuggestions] = useState<string[]>([]);
   const [restrictedSlots, setRestrictedSlots] = useState<TimeWindow[]>([]);
   const [scenarioText, setScenarioText] = useState("");
+  const [lastSuggestedFor, setLastSuggestedFor] = useState("");
+  const suggestionRequestRef = useRef(0);
 
   useEffect(() => {
     const scenarioFromQuery = searchParams.get("scenario")?.trim() || "";
@@ -25,6 +27,46 @@ export default function NewGoalPage() {
       setScenarioText(scenarioFromQuery);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const query = scenarioText.trim();
+
+    if (query.length < 8) {
+      setSuggestionsLoading(false);
+      setSuggestionError("");
+      setScenarioSuggestions([]);
+      return;
+    }
+
+    if (query === lastSuggestedFor) {
+      return;
+    }
+
+    const currentRequestId = ++suggestionRequestRef.current;
+    setSuggestionsLoading(true);
+    setSuggestionError("");
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await getScenarioSuggestions(query);
+        if (suggestionRequestRef.current !== currentRequestId) return;
+        setScenarioSuggestions(result.suggestions.slice(0, 2));
+        setLastSuggestedFor(query);
+      } catch (err: any) {
+        if (suggestionRequestRef.current !== currentRequestId) return;
+        setSuggestionError(err?.message || "Could not generate scenario suggestions right now.");
+        setScenarioSuggestions([]);
+      } finally {
+        if (suggestionRequestRef.current === currentRequestId) {
+          setSuggestionsLoading(false);
+        }
+      }
+    }, 700);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [scenarioText, lastSuggestedFor]);
 
   function addRestrictedSlot() {
     setRestrictedSlots((prev) => [
@@ -99,26 +141,6 @@ export default function NewGoalPage() {
     }
   }
 
-  async function handleScenarioSuggestions() {
-    const base = scenarioText.trim();
-    if (base.length < 5) {
-      setSuggestionError("Write a bit more in scenario first.");
-      return;
-    }
-
-    setSuggestionError("");
-    setSuggestionsLoading(true);
-    try {
-      const result = await getScenarioSuggestions(base);
-      setScenarioSuggestions(result.suggestions.slice(0, 2));
-    } catch (err: any) {
-      setSuggestionError(err?.message || "Could not generate scenario suggestions right now.");
-      setScenarioSuggestions([]);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }
-
   return (
     <div className="max-w-2xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold mb-6 text-cyan-50">Describe Your Goal Scenario</h1>
@@ -135,23 +157,14 @@ export default function NewGoalPage() {
             value={scenarioText}
             onChange={(e) => setScenarioText(e.target.value)}
           />
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={handleScenarioSuggestions}
-              disabled={suggestionsLoading}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-500/30 disabled:opacity-50"
-            >
-              {suggestionsLoading ? (
-                <>
-                  <svg className="animate-spin h-3.5 w-3.5 text-cyan-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                  Generating...
-                </>
-              ) : (
-                "AI Suggestions"
-              )}
-            </button>
-          </div>
+          <p className="text-[10px] text-slate-500 mt-2">AI suggestions auto-generate when you pause typing.</p>
+
+          {suggestionsLoading ? (
+            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+              <svg className="animate-spin h-3.5 w-3.5 text-cyan-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+              Generating AI suggestions...
+            </div>
+          ) : null}
 
           {scenarioSuggestions.length > 0 ? (
             <div className="mt-2 space-y-1.5">

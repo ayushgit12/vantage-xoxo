@@ -1,4 +1,23 @@
-from agents.retriever.parsers.youtube_parser import _clean_caption_text
+from agents.retriever.parsers.youtube_parser import (
+    _clean_caption_text,
+    _extract_playlist_id,
+    _extract_video_id,
+)
+
+
+def test_extract_video_id_from_watch_url() -> None:
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert _extract_video_id(url) == "dQw4w9WgXcQ"
+
+
+def test_extract_playlist_id_from_playlist_url() -> None:
+    url = "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
+    assert _extract_playlist_id(url) == "PL1234567890ABCDEF"
+
+
+def test_extract_playlist_id_from_watch_url_with_list() -> None:
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1234567890ABCDEF"
+    assert _extract_playlist_id(url) == "PL1234567890ABCDEF"
 
 
 def test_clean_caption_text_from_vtt_like_input() -> None:
