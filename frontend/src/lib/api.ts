@@ -31,6 +31,12 @@ export const previewGoalFromScenario = (body: ScenarioGoalRequest) =>
     body: JSON.stringify(body),
   });
 
+export const getScenarioSuggestions = (scenarioText: string) =>
+  apiFetch<ScenarioSuggestionsResponse>("/api/goals/scenario-suggestions", {
+    method: "POST",
+    body: JSON.stringify({ scenario_text: scenarioText }),
+  });
+
 export const createGoalFromScenario = (body: ScenarioGoalRequest) =>
   apiFetch<Goal>("/api/goals/from-scenario", {
     method: "POST",
@@ -40,6 +46,9 @@ export const createGoalFromScenario = (body: ScenarioGoalRequest) =>
 export const listGoals = () => apiFetch<Goal[]>("/api/goals");
 
 export const getGoal = (id: string) => apiFetch<Goal>(`/api/goals/${id}`);
+
+export const getGoalSuggestions = (id: string) =>
+  apiFetch<GoalSuggestionsResponse>(`/api/goals/${id}/suggestions`);
 
 export const updateGoal = (id: string, body: GoalUpdate) =>
   apiFetch<Goal>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -367,4 +376,13 @@ export interface ScenarioGoalPreview {
   assumptions: string[];
   warnings: string[];
   goal_preview: GoalCreate;
+}
+
+export interface ScenarioSuggestionsResponse {
+  suggestions: string[];
+}
+
+export interface GoalSuggestionsResponse {
+  goal_id: string;
+  suggestions: string[];
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createGoalFromScenario, type TimeWindow } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createGoalFromScenario, getScenarioSuggestions, type TimeWindow } from "@/lib/api";
 import { toDeadlineIso } from "@/lib/schedule";
 
 const PRIORITIES = ["high", "medium", "low"];
@@ -10,9 +10,21 @@ const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function NewGoalPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [suggestionError, setSuggestionError] = useState("");
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [scenarioSuggestions, setScenarioSuggestions] = useState<string[]>([]);
   const [restrictedSlots, setRestrictedSlots] = useState<TimeWindow[]>([]);
+  const [scenarioText, setScenarioText] = useState("");
+
+  useEffect(() => {
+    const scenarioFromQuery = searchParams.get("scenario")?.trim() || "";
+    if (scenarioFromQuery) {
+      setScenarioText(scenarioFromQuery);
+    }
+  }, [searchParams]);
 
   function addRestrictedSlot() {
     setRestrictedSlots((prev) => [
@@ -50,7 +62,7 @@ export default function NewGoalPage() {
 
     const form = new FormData(e.currentTarget);
 
-    const scenario = (form.get("scenario") as string).trim();
+    const scenario = scenarioText.trim();
     const manualDeadline = form.get("deadline") as string;
     const materialUrls = (form.get("urls") as string)
       .split("\n")
@@ -87,6 +99,26 @@ export default function NewGoalPage() {
     }
   }
 
+  async function handleScenarioSuggestions() {
+    const base = scenarioText.trim();
+    if (base.length < 5) {
+      setSuggestionError("Write a bit more in scenario first.");
+      return;
+    }
+
+    setSuggestionError("");
+    setSuggestionsLoading(true);
+    try {
+      const result = await getScenarioSuggestions(base);
+      setScenarioSuggestions(result.suggestions.slice(0, 2));
+    } catch (err: any) {
+      setSuggestionError(err?.message || "Could not generate scenario suggestions right now.");
+      setScenarioSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold mb-6 text-cyan-50">Describe Your Goal Scenario</h1>
@@ -100,7 +132,44 @@ export default function NewGoalPage() {
             rows={4}
             className="dark-input"
             placeholder="e.g., I want to do 20 pushups daily before breakfast and stay consistent for 3 months."
+            value={scenarioText}
+            onChange={(e) => setScenarioText(e.target.value)}
           />
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleScenarioSuggestions}
+              disabled={suggestionsLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-500/30 disabled:opacity-50"
+            >
+              {suggestionsLoading ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-cyan-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Generating...
+                </>
+              ) : (
+                "AI Suggestions"
+              )}
+            </button>
+          </div>
+
+          {scenarioSuggestions.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {scenarioSuggestions.map((suggestion, idx) => (
+                <button
+                  key={`${suggestion}-${idx}`}
+                  type="button"
+                  onClick={() => setScenarioText(suggestion)}
+                  className="w-full text-left rounded-lg border border-cyan-500/20 bg-cyan-500/8 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/14 transition"
+                >
+                  {suggestion}
+                </button>
+              ))}
+              <p className="text-[10px] text-slate-500">(Click one to use it as your scenario)</p>
+            </div>
+          ) : null}
+
+          {suggestionError ? <p className="text-red-400 text-xs mt-2">{suggestionError}</p> : null}
           <p className="text-xs text-slate-500 mt-1">
             The model auto-detects goal type and creates structured data.
           </p>

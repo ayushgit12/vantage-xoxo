@@ -48,7 +48,12 @@ async def trigger_ingest(
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
     if doc.get("goal_type") == GoalType.HABIT:
-        raise HTTPException(status_code=400, detail="Retriever is not applicable to habit goals")
+        has_materials = bool(doc.get("material_urls") or doc.get("uploaded_file_ids"))
+        if not has_materials:
+            raise HTTPException(
+                status_code=400,
+                detail="Retriever is not applicable to habit goals without materials",
+            )
 
     try:
         knowledge = await run_retriever(goal_id, user_id)
@@ -73,7 +78,12 @@ async def trigger_ingest_stream(
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
     if doc.get("goal_type") == GoalType.HABIT:
-        raise HTTPException(status_code=400, detail="Retriever is not applicable to habit goals")
+        has_materials = bool(doc.get("material_urls") or doc.get("uploaded_file_ids"))
+        if not has_materials:
+            raise HTTPException(
+                status_code=400,
+                detail="Retriever is not applicable to habit goals without materials",
+            )
 
     async def event_stream():
         progress_queue: asyncio.Queue[dict] = asyncio.Queue()

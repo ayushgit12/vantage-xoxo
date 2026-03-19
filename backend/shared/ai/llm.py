@@ -14,6 +14,7 @@ class _GraphState(TypedDict):
     messages: list[Any]
     temperature: float
     json_mode: bool
+    model_override: str | None
     response_text: str
 
 
@@ -39,10 +40,10 @@ def _imports() -> dict[str, Any]:
     }
 
 
-def _resolve_llm_credentials() -> tuple[str, str]:
+def _resolve_llm_credentials(model_override: str | None = None) -> tuple[str, str]:
     settings = get_settings()
     api_key = settings.azure_openai_api_key or settings.llm_api_key
-    model = settings.llm_model
+    model = model_override or settings.llm_model
     return api_key, model
 
 
@@ -66,13 +67,13 @@ def _validate_llm_settings() -> None:
             raise RuntimeError("LLM_API_KEY is required for non-Azure LLM mode")
 
 
-def _build_chat_model(temperature: float, json_mode: bool) -> Any:
+def _build_chat_model(temperature: float, json_mode: bool, model_override: str | None = None) -> Any:
     imported = _imports()
     chat_openai_cls = imported["ChatOpenAI"]
     azure_chat_openai_cls = imported["AzureChatOpenAI"]
     settings = get_settings()
     _validate_llm_settings()
-    api_key, model = _resolve_llm_credentials()
+    api_key, model = _resolve_llm_credentials(model_override=model_override)
     model_kwargs: dict[str, Any] = {}
     if json_mode:
         model_kwargs["response_format"] = {"type": "json_object"}
@@ -98,7 +99,11 @@ def _build_chat_model(temperature: float, json_mode: bool) -> Any:
 def _invoke_node(state: _GraphState) -> _GraphState:
     imported = _imports()
     ai_message_cls = imported["AIMessage"]
-    llm = _build_chat_model(temperature=state["temperature"], json_mode=state["json_mode"])
+    llm = _build_chat_model(
+        temperature=state["temperature"],
+        json_mode=state["json_mode"],
+        model_override=state.get("model_override"),
+    )
     resp = llm.invoke(state["messages"])
     if isinstance(resp, ai_message_cls):
         text = resp.content if isinstance(resp.content, str) else str(resp.content)
@@ -114,6 +119,7 @@ def run_prompt_via_graph(
     system_prompt: str | None = None,
     temperature: float = 0.0,
     json_mode: bool = False,
+    model: str | None = None,
 ) -> str:
     """Run a prompt through a one-node LangGraph workflow and return text output."""
     imported = _imports()
@@ -138,6 +144,7 @@ def run_prompt_via_graph(
         "temperature": temperature,
         "json_mode": json_mode,
         "response_text": "",
+        "model_override": model,
     }
     result = app.invoke(state)
     return result["response_text"]

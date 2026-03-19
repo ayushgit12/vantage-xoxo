@@ -50,7 +50,9 @@ async def run_retriever(
             raise ValueError(f"Goal {goal_id} not found")
 
         if goal_doc.get("goal_type") == GoalType.HABIT:
-            raise ValueError("Retriever is not applicable to habit goals")
+            has_materials = bool(goal_doc.get("uploaded_file_ids") or goal_doc.get("material_urls"))
+            if not has_materials:
+                raise ValueError("Retriever is not applicable to habit goals without materials")
 
         # 2. Parse all materials (files + URLs)
         await _progress(1, "Parsing materials & URLs…")

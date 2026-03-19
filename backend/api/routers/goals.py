@@ -1,8 +1,12 @@
 """Goal CRUD endpoints."""
 
+import json
 import logging
+import re
+from difflib import SequenceMatcher
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from api.dependencies import get_current_user_id
@@ -17,10 +21,15 @@ from shared.models.goal import GoalCategory, GoalPriority, GoalType
 from shared.models.goal import GoalStatus
 from shared.db.repositories import goals_repo
 from shared.config import get_settings
+from shared.ai import run_prompt_via_graph
 from agents.intake.agent import parse_scenario_to_goal
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class ScenarioSuggestionRequest(BaseModel):
+    scenario_text: str = Field(min_length=5, max_length=2000)
 
 
 def _normalize_goal_enum(value, enum_cls, default_value: str) -> str:
@@ -132,6 +141,88 @@ async def create_goal_from_scenario(
     return goal
 
 
+@router.post("/scenario-suggestions")
+async def get_scenario_suggestions(
+    body: ScenarioSuggestionRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Generate 1-2 stronger scenario variants from a user's draft scenario."""
+    del user_id
+
+    base = body.scenario_text.strip()
+    prompt = (
+        "You improve user-written goal scenarios for better planning outcomes.\n\n"
+        "Given an input scenario, generate 1 or 2 improved scenario variants that are:\n"
+        "- related to the original intent\n"
+        "- slightly expanded with a meaningful progression or adjacent challenge\n"
+        "- still realistic and actionable\n"
+        "- phrased as a user goal sentence starting with 'I want to'\n"
+        "- NOT just the same sentence with tiny wording changes\n"
+        "- max 24 words each\n\n"
+        "Return strict JSON only:\n"
+        "{\n"
+        "  \"suggestions\": [\"...\", \"...\"]\n"
+        "}\n\n"
+        "Example:\n"
+        "Input: I want to do pullups\n"
+        "Good: I want to do pullups and progress to controlled weighted pullups\n"
+        "Good: I want to do pullups and build grip strength with dead hangs\n"
+        "Bad: I want to do more pullups\n\n"
+        f"Input scenario: {base}\n"
+    )
+
+    try:
+        result_text = run_prompt_via_graph(
+            prompt,
+            temperature=0.35,
+            json_mode=True,
+            model="gpt-4.1",
+        ).strip()
+        result_text = re.sub(r"^```(?:json)?\\s*\\n?", "", result_text)
+        result_text = re.sub(r"\\n?```\\s*$", "", result_text).strip()
+        payload = json.loads(result_text)
+    except Exception as exc:
+        logger.exception("Scenario suggestion generation failed")
+        raise HTTPException(status_code=500, detail="Could not generate scenario suggestions") from exc
+
+    raw = payload.get("suggestions", [])
+    if not isinstance(raw, list):
+        raw = []
+
+    normalized_base = re.sub(r"[^a-z0-9\\s]", "", base.lower()).strip()
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item).strip().strip("- ").strip()
+        if not text:
+            continue
+        if not text.lower().startswith("i want to"):
+            text = f"I want to {text[0].lower() + text[1:] if len(text) > 1 else text.lower()}"
+        key = text.lower()
+        if key in seen:
+            continue
+
+        similarity = SequenceMatcher(
+            None,
+            re.sub(r"[^a-z0-9\\s]", "", key),
+            normalized_base,
+        ).ratio()
+        if similarity >= 0.86:
+            continue
+
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) == 2:
+            break
+
+    if not cleaned:
+        cleaned = [
+            f"I want to {base.lower()} and add one complementary progression goal",
+        ]
+
+    return {"suggestions": cleaned}
+
+
 @router.post("", response_model=Goal)
 async def create_goal(
     body: GoalCreate,
@@ -157,6 +248,159 @@ async def get_goal(goal_id: str, user_id: str = Depends(get_current_user_id)):
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
     return await _goal_from_doc(doc)
+
+
+@router.get("/{goal_id}/suggestions")
+async def get_related_goal_suggestions(
+    goal_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Generate 1-2 related follow-up goal suggestions for the current goal."""
+    doc = await goals_repo.find_by_id(goal_id)
+    if not doc or doc.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    prompt = (
+        "You are helping users discover adjacent SKILL goals. "
+        "Given one goal, suggest only 1 or 2 related goals they can do next.\n\n"
+        "Return strict JSON only:\n"
+        "{\n"
+        "  \"suggestions\": [\"...\", \"...\"]\n"
+        "}\n\n"
+        "Rules:\n"
+        "- 1 or 2 suggestions only\n"
+        "- each suggestion max 12 words\n"
+        "- concrete and actionable\n"
+        "- prefer adjacent skill progressions (prerequisite/companion next skills)\n"
+        "- suggestions must be different goals, not a variation of the same goal\n"
+        "- do NOT suggest increasing/improving/counting the exact same core activity\n"
+        "- suggest tangible training goals, not tracking/admin tasks\n"
+        "- avoid suggestions about journals, logging, notes, or reminders\n"
+        "- avoid repeating the exact same goal\n"
+        "- each suggestion should be written like a goal sentence starting with 'I want to'\n"
+        "- no numbering, no bullets, no explanation\n\n"
+        "Style examples:\n"
+        "- If goal is pullups, good: 'Build pushup strength for upper-body endurance'\n"
+        "- If goal is pullups, good: 'Train scapular pullups and dead hangs for control'\n"
+        "- If goal is pullups, bad: 'Track pullup progress in a workout journal'\n\n"
+        f"Current goal title: {doc.get('title', '')}\n"
+        f"Current goal description: {doc.get('description', '')}\n"
+        f"Current goal type: {doc.get('goal_type', '')}\n"
+        f"Current goal category: {doc.get('category', '')}\n"
+    )
+
+    try:
+        result_text = run_prompt_via_graph(
+            prompt,
+            temperature=0.3,
+            json_mode=True,
+            model="gpt-4.1",
+        ).strip()
+        result_text = re.sub(r"^```(?:json)?\\s*\\n?", "", result_text)
+        result_text = re.sub(r"\\n?```\\s*$", "", result_text).strip()
+        payload = json.loads(result_text)
+    except Exception as exc:
+        logger.exception("Goal suggestion generation failed for %s", goal_id)
+        raise HTTPException(status_code=500, detail="Could not generate suggestions") from exc
+
+    raw_suggestions = payload.get("suggestions", [])
+    if not isinstance(raw_suggestions, list):
+        raw_suggestions = []
+
+    def _normalize(text: str) -> str:
+        return re.sub(r"[^a-z0-9\s]", "", text.lower()).strip()
+
+    stop_words = {
+        "i", "want", "to", "learn", "improve", "increase", "build", "the", "a", "an",
+        "and", "for", "with", "of", "in", "on", "my", "daily", "weekly", "goal",
+    }
+
+    def _tokens(text: str) -> set[str]:
+        return {
+            tok for tok in _normalize(text).split()
+            if len(tok) >= 4 and tok not in stop_words
+        }
+
+    goal_title = str(doc.get("title", ""))
+    goal_desc = str(doc.get("description", ""))
+    goal_text = f"{goal_title} {goal_desc}".strip()
+    goal_text_norm = _normalize(goal_text)
+    goal_tokens = _tokens(goal_text)
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    blocked_terms = {
+        "journal",
+        "track",
+        "log",
+        "logging",
+        "note",
+        "notes",
+        "reminder",
+        "reminders",
+    }
+    for item in raw_suggestions:
+        text = str(item).strip().strip("- ").strip()
+        if not text:
+            continue
+        if not text.lower().startswith("i want to"):
+            text = f"I want to {text[0].lower() + text[1:] if len(text) > 1 else text.lower()}"
+
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        if any(term in key for term in blocked_terms):
+            continue
+
+        suggestion_norm = _normalize(text)
+        if not suggestion_norm:
+            continue
+
+        # Reject near-duplicates of the original goal phrasing.
+        if goal_text_norm and SequenceMatcher(None, suggestion_norm, goal_text_norm).ratio() >= 0.58:
+            continue
+
+        # Reject suggestions that overlap too heavily with core goal tokens.
+        suggestion_tokens = _tokens(text)
+        if goal_tokens and suggestion_tokens:
+            overlap = len(goal_tokens & suggestion_tokens) / max(1, len(goal_tokens))
+            if overlap >= 0.65:
+                continue
+
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) == 2:
+            break
+
+    if not cleaned:
+        category = str(doc.get("category", "")).lower()
+        fallback_by_category: dict[str, list[str]] = {
+            "fitness": [
+                "I want to improve core strength and stability",
+                "I want to build shoulder mobility and joint control",
+            ],
+            "course": [
+                "I want to strengthen note-taking and active recall",
+                "I want to practice spaced revision every week",
+            ],
+            "skill": [
+                "I want to practice foundational drills consistently",
+                "I want to improve speed and accuracy with timed practice",
+            ],
+            "project": [
+                "I want to improve problem decomposition for larger tasks",
+                "I want to strengthen testing and debugging workflow",
+            ],
+        }
+        cleaned = fallback_by_category.get(
+            category,
+            [
+                "I want to build a complementary foundational skill",
+                "I want to practice a related skill with progressive difficulty",
+            ],
+        )[:2]
+
+    return {"goal_id": goal_id, "suggestions": cleaned}
 
 
 @router.patch("/{goal_id}", response_model=Goal)

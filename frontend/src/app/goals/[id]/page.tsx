@@ -7,6 +7,7 @@ import {
   addKnowledgeTopic,
   deleteKnowledgeTopic,
   getGoal,
+  getGoalSuggestions,
   getKnowledge,
   getPlanForGoal,
   replanAllPlans,
@@ -50,8 +51,14 @@ export default function UnifiedGoalDashboard() {
   const [editHours, setEditHours] = useState("");
   const [ingestStep, setIngestStep] = useState(0);
   const [selectedSourceKey, setSelectedSourceKey] = useState<string | null>(null);
+  const [goalSuggestions, setGoalSuggestions] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   const isHabitGoal = goal?.goal_type === "habit";
+  const hasGoalMaterials =
+    (goal?.uploaded_file_ids.length ?? 0) > 0 ||
+    (goal?.material_urls.length ?? 0) > 0;
+  const shouldUseRetrieverFlow = !isHabitGoal || hasGoalMaterials;
 
   const retrieverSteps = [
     { icon: "📄", label: "Loading goal…" },
@@ -67,6 +74,34 @@ export default function UnifiedGoalDashboard() {
 
   useEffect(() => {
     void loadData();
+  }, [goalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSuggestions() {
+      setSuggestionsLoading(true);
+      try {
+        const result = await getGoalSuggestions(goalId);
+        if (!cancelled) {
+          setGoalSuggestions(result.suggestions.slice(0, 2));
+        }
+      } catch {
+        if (!cancelled) {
+          setGoalSuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSuggestionsLoading(false);
+        }
+      }
+    }
+
+    void loadSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
   }, [goalId]);
 
   async function runAction(actionId: string, action: () => Promise<void>) {
@@ -273,7 +308,7 @@ export default function UnifiedGoalDashboard() {
   }
 
   const sourceItems = useMemo(() => {
-    if (!goal || isHabitGoal) return [];
+    if (!goal) return [];
 
     const refs = knowledge?.resource_refs ?? [];
     const refsByUrl = new Map(refs.map((ref) => [ref.url, ref]));
@@ -409,7 +444,7 @@ export default function UnifiedGoalDashboard() {
               {actionLoading === "complete" ? "Saving..." : "Mark Complete"}
             </button>
           ) : null}
-          {isHabitGoal ? (
+          {!shouldUseRetrieverFlow ? (
             !plan ? (
               <button 
                 onClick={() => void runAction("plan", async () => {
@@ -451,12 +486,16 @@ export default function UnifiedGoalDashboard() {
             <div>
               <button 
                 onClick={() => {
+                  resetReviewFeedback();
                   setActionLoading("ingest");
                   setIngestStep(0);
                   triggerIngestStream(goalId, (step) => {
                     setIngestStep(step);
                   })
                     .then(() => loadData())
+                    .catch((error) => {
+                      setReviewError(error instanceof Error ? error.message : "Failed to parse materials");
+                    })
                     .finally(() => setActionLoading(""));
                 }}
                 disabled={!!actionLoading}
@@ -564,6 +603,35 @@ export default function UnifiedGoalDashboard() {
         
         {/* Left Sidebar: Retriever & Sources */}
         <div className="md:col-span-3 space-y-10">
+          <div>
+            <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">You Can Also Do</h3>
+            <div className="glass-card p-4 space-y-2">
+              {suggestionsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <svg className="animate-spin h-3.5 w-3.5 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Generating suggestions...
+                </div>
+              ) : goalSuggestions.length > 0 ? (
+                <ul className="space-y-2">
+                  {goalSuggestions.map((suggestion, index) => (
+                    <li key={`${suggestion}-${index}`}>
+                      <Link
+                        href={`/goals/new?scenario=${encodeURIComponent(suggestion)}`}
+                        className="block text-sm text-cyan-100 leading-relaxed rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 hover:border-cyan-500/30 hover:bg-cyan-500/10 transition"
+                        title="Create a new goal from this suggestion"
+                      >
+                        {suggestion}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500">No related suggestions available right now.</p>
+              )}
+              <p className="text-[10px] text-slate-500">(Click any one to create this goal)</p>
+            </div>
+          </div>
+
           {isHabitGoal ? (
             <div>
               <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">Routine</h3>
@@ -580,7 +648,11 @@ export default function UnifiedGoalDashboard() {
                 ) : null}
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tracking</p>
-                  <p className="text-sm text-cyan-100">This habit skips material parsing and goes straight to routine scheduling.</p>
+                  <p className="text-sm text-cyan-100">
+                    {hasGoalMaterials
+                      ? "Materials detected. You can parse them to generate retriever topics before planning."
+                      : "This habit skips material parsing and goes straight to routine scheduling."}
+                  </p>
                 </div>
               </div>
             </div>
@@ -777,7 +849,7 @@ export default function UnifiedGoalDashboard() {
           )}
 
           {/* Sources */}
-          {!isHabitGoal && sourceItems.length > 0 ? (
+          {sourceItems.length > 0 ? (
             <div>
               <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase mb-4">Sources</h3>
               <div className="space-y-3">
