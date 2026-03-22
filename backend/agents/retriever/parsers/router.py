@@ -42,14 +42,24 @@ async def parse_all_materials(
     for url in urls:
         try:
             if "youtube.com" in url or "youtu.be" in url:
-                text, ref = await parse_youtube(url)
+                result = await parse_youtube(url)
+                # Handle both single video (tuple) and playlist (list of tuples)
+                if isinstance(result, list):
+                    for text, ref in result:
+                        texts.append(text)
+                        refs.append(ref)
+                else:
+                    text, ref = result
+                    texts.append(text)
+                    refs.append(ref)
             elif "github.com" in url:
                 text, ref = await parse_github(url)
+                texts.append(text)
+                refs.append(ref)
             else:
                 text, ref = await parse_html(url)
-
-            texts.append(text)
-            refs.append(ref)
+                texts.append(text)
+                refs.append(ref)
         except Exception as e:
             logger.warning("Failed to parse URL %s: %s", url, e)
 

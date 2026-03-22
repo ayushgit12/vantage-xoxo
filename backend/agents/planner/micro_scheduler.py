@@ -88,6 +88,11 @@ def schedule_micro_blocks(
                 slot_index += 1
                 continue
 
+            daily_remaining = max_daily_minutes - used_today
+            if daily_remaining < MIN_BLOCK_MINUTES:
+                slot_index += 1
+                continue
+
             # Check topic-per-day limit
             if day_key not in daily_topics:
                 daily_topics[day_key] = set()
@@ -95,22 +100,28 @@ def schedule_micro_blocks(
                 slot_index += 1
                 continue
 
-            # Determine block duration
-            daily_remaining = max_daily_minutes - used_today
-            block_minutes = min(
+            # Determine desired duration, then quantize to 30-min slot granularity
+            # so consumed slots and stored duration always match.
+            desired_minutes = min(
                 remaining,
                 available_minutes,
                 MAX_BLOCK_MINUTES,
                 daily_remaining,
             )
-            block_minutes = max(block_minutes, MIN_BLOCK_MINUTES)
-            block_minutes = int(block_minutes)
 
-            # Number of slots to consume
-            slots_needed = block_minutes // SLOT_MINUTES
-            if slots_needed > len(available_block):
+            max_schedulable_slots = min(
+                len(available_block),
+                MAX_BLOCK_MINUTES // SLOT_MINUTES,
+                daily_remaining // SLOT_MINUTES,
+            )
+            slots_needed = int(desired_minutes // SLOT_MINUTES)
+            slots_needed = min(slots_needed, max_schedulable_slots)
+
+            if slots_needed * SLOT_MINUTES < MIN_BLOCK_MINUTES:
                 slot_index += 1
                 continue
+
+            block_minutes = slots_needed * SLOT_MINUTES
 
             # Use the first N slots
             used_slots = available_block[:slots_needed]

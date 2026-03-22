@@ -1,4 +1,4 @@
-from agents.retriever.parsers.youtube_parser import _clean_caption_text
+from agents.retriever.parsers.youtube_parser import _clean_caption_text, _is_playlist_url
 
 
 def test_clean_caption_text_from_vtt_like_input() -> None:
@@ -29,3 +29,21 @@ Hi &amp; welcome
     cleaned = _clean_caption_text(raw)
 
     assert cleaned == "Hi & welcome"
+
+
+def test_is_playlist_url_detects_list_parameter() -> None:
+    """Test that playlist URLs with list parameter are detected."""
+    assert _is_playlist_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxxxx")
+    assert _is_playlist_url("https://www.youtube.com/playlist?list=PLxxxxx")
+
+
+def test_is_playlist_url_rejects_single_videos() -> None:
+    """Test that single video URLs are not detected as playlists."""
+    assert not _is_playlist_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert not _is_playlist_url("https://youtu.be/dQw4w9WgXcQ")
+
+
+def test_is_playlist_url_detects_direct_playlist_url() -> None:
+    """Test that direct playlist URLs are detected."""
+    assert _is_playlist_url("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+

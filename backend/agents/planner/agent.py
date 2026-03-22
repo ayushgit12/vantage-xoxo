@@ -25,7 +25,7 @@ from shared.telemetry.tracing import get_tracer
 
 from agents.planner.availability import build_availability_matrix, AvailabilityMatrix
 from agents.planner.macro_allocator import compute_macro_allocations
-from agents.planner.micro_scheduler import schedule_micro_blocks
+from agents.planner.micro_scheduler import schedule_micro_blocks, MAX_DAILY_MINUTES
 from agents.planner.habit_scheduler import schedule_habit_blocks
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,56 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
     from shared.models.goal import Goal
 
     goal = Goal(**goal_doc)
-    blocks = schedule_habit_blocks(goal=goal, window_days=window_days)
+
+    # Habit goals still need collision-aware placement against existing plans.
+    user_doc = await users_repo.find_by_id(user_id, id_field="user_id")
+    user = UserProfile(**user_doc) if user_doc else UserProfile(user_id=user_id)
+    constraint_docs = await constraints_repo.find_many({"user_id": user_id})
+    availability = build_availability_matrix(
+        user=user,
+        constraints=constraint_docs,
+        window_days=window_days,
+    )
+
+    all_goals = await goals_repo.find_many({"user_id": user_id})
+    for existing_goal in all_goals:
+        if not _is_schedulable_goal(existing_goal):
+            continue
+        if existing_goal.get("goal_id") == goal.goal_id:
+            continue
+
+        existing_plan_id = existing_goal.get("active_plan_id")
+        if not existing_plan_id:
+            continue
+
+        existing_plan = await plans_repo.find_by_id(existing_plan_id, id_field="plan_id")
+        if not existing_plan:
+            continue
+
+        for block in existing_plan.get("micro_blocks", []):
+            if block.get("status") == "cancelled":
+                continue
+
+            bstart = block.get("start_dt")
+            if isinstance(bstart, str):
+                bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
+            if not bstart:
+                continue
+
+            duration_min = int(block.get("duration_min", 0) or 0)
+            if duration_min <= 0:
+                continue
+
+            availability.block_slot_range(
+                bstart.date(), bstart.hour, bstart.minute, duration_min
+            )
+
+    blocks = schedule_habit_blocks(
+        goal=goal,
+        window_days=window_days,
+        availability=availability,
+        avoid_overlaps=True,
+    )
 
     plan = Plan(
         user_id=user_id,
@@ -86,7 +135,10 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
         seed=DEFAULT_SEED,
         macro_allocations=[],
         micro_blocks=[],
-        explanation="Recurring habit schedule generated from inferred preferred schedule",
+        explanation=(
+            "Recurring habit schedule generated from preferred schedule "
+            "with overlap avoidance against existing goal blocks"
+        ),
     )
 
     # Assign plan_id to all blocks now that we have it
@@ -241,13 +293,16 @@ async def replan_all_goals(
                 )
 
             # Schedule into remaining available slots
+            # Keep daily load bounded so new plans are spread across multiple days
+            # instead of being packed into a single long day.
+            per_day_cap = min(int(user.daily_capacity_hours * 60), MAX_DAILY_MINUTES)
             micro_blocks = schedule_micro_blocks(
                 knowledge=knowledge,
                 macro_allocations=macro,
                 availability=availability,
                 seed=DEFAULT_SEED,
                 max_topics_per_day=user.max_topics_per_day,
-                max_daily_minutes=int(user.daily_capacity_hours * 60),
+                max_daily_minutes=per_day_cap,
             )
 
             # Restore temporarily blocked restricted slots so other goals can use them

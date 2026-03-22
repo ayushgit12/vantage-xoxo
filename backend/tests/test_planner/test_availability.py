@@ -1,6 +1,6 @@
 """Test availability matrix construction."""
 
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from shared.models.user import UserProfile, TimeWindow
 from agents.planner.availability import build_availability_matrix
 
@@ -45,3 +45,44 @@ def test_contiguous_blocks():
     # Each block should have at least 2 contiguous slots
     for block in blocks:
         assert len(block) >= 2
+
+
+def test_fixed_constraint_blocked_with_minute_precision():
+    user = UserProfile(user_id="u1")
+    start_day = datetime.now(timezone.utc).date()
+    start_dt = datetime.combine(start_day, time(9, 30), tzinfo=timezone.utc)
+    end_dt = start_dt + timedelta(hours=1)
+
+    constraints = [
+        {
+            "type": "fixed",
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+        }
+    ]
+
+    matrix = build_availability_matrix(user, constraints=constraints, window_days=1)
+
+    slot_900 = next(s for s in matrix.slots if s.date == start_day and s.hour == 9 and s.minute == 0)
+    slot_930 = next(s for s in matrix.slots if s.date == start_day and s.hour == 9 and s.minute == 30)
+    slot_1000 = next(s for s in matrix.slots if s.date == start_day and s.hour == 10 and s.minute == 0)
+    slot_1030 = next(s for s in matrix.slots if s.date == start_day and s.hour == 10 and s.minute == 30)
+
+    assert slot_900.available is True
+    assert slot_930.available is False
+    assert slot_1000.available is False
+    assert slot_1030.available is True
+
+
+def test_preferred_windows_are_enforced():
+    user = UserProfile(
+        user_id="u1",
+        preferred_time_windows=[
+            TimeWindow(start_hour=10, end_hour=12, days=list(range(7))),
+        ],
+    )
+    matrix = build_availability_matrix(user, constraints=[], window_days=1)
+    slots = matrix.get_available_slots()
+    hours_available = {s.hour for s in slots}
+
+    assert hours_available == {10, 11}

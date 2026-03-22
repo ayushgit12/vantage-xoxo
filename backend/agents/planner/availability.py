@@ -158,7 +158,7 @@ def build_availability_matrix(
         c_type = c.get("type", "")
 
         if c_type == ConstraintType.FIXED:
-            # One-time fixed block
+            # One-time fixed block with minute precision.
             start = c.get("start_time")
             end = c.get("end_time")
             if start and end:
@@ -166,7 +166,15 @@ def build_availability_matrix(
                     start = datetime.fromisoformat(start.replace("Z", "+00:00"))
                 if isinstance(end, str):
                     end = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                matrix.block_range(start.date(), start.hour, end.hour)
+                if isinstance(start, datetime) and isinstance(end, datetime):
+                    duration_min = int((end - start).total_seconds() // 60)
+                    if duration_min > 0:
+                        matrix.block_slot_range(
+                            start.date(),
+                            start.hour,
+                            start.minute,
+                            duration_min,
+                        )
 
         elif c_type == ConstraintType.RECURRING:
             # Recurring block
@@ -178,8 +186,8 @@ def build_availability_matrix(
                 end_h = r_end if isinstance(r_end, int) else r_end.hour
                 matrix.block_recurring(days, start_h, end_h)
 
-    # Respect preferred time windows: mark non-preferred as lower priority
-    # (for MVP, just use available = True for preferred windows)
+    # Respect preferred study windows from user settings.
+    # If windows are provided, only those windows are schedulable.
     if user.preferred_time_windows:
         for slot in matrix.slots:
             in_preferred = False
@@ -190,8 +198,9 @@ def build_availability_matrix(
                 ):
                     in_preferred = True
                     break
-            # Don't block non-preferred, but mark for tie-breaking later
             slot._preferred = in_preferred  # type: ignore
+            if slot.available and not in_preferred:
+                slot.available = False
     else:
         for slot in matrix.slots:
             slot._preferred = True  # type: ignore
