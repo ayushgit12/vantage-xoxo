@@ -4,9 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createGoalFromScenario, getScenarioSuggestions, type TimeWindow } from "@/lib/api";
 import { toDeadlineIso } from "@/lib/schedule";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const PRIORITIES = ["high", "medium", "low"];
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
+
+function formatHour(hour: number) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
 
 export default function NewGoalPage() {
   const router = useRouter();
@@ -16,10 +33,15 @@ export default function NewGoalPage() {
   const [suggestionError, setSuggestionError] = useState("");
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [scenarioSuggestions, setScenarioSuggestions] = useState<string[]>([]);
-  const [restrictedSlots, setRestrictedSlots] = useState<TimeWindow[]>([]);
+  const [restrictedSlots, setRestrictedSlots] = useState<TimeWindow[]>([
+    { start_hour: 14, end_hour: 15, days: [0, 1, 2, 3, 4, 5, 6] },
+  ]);
   const [scenarioText, setScenarioText] = useState("");
   const [lastSuggestedFor, setLastSuggestedFor] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [deadlineDate, setDeadlineDate] = useState<Date | undefined>(undefined);
   const suggestionRequestRef = useRef(0);
+  const hasVisibleSuggestions = suggestionsLoading || scenarioSuggestions.length > 0 || !!suggestionError;
 
   useEffect(() => {
     const scenarioFromQuery = searchParams.get("scenario")?.trim() || "";
@@ -142,174 +164,244 @@ export default function NewGoalPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
-      <h1 className="text-2xl font-bold mb-6 text-cyan-50">Describe Your Goal Scenario</h1>
-
-      <form onSubmit={handleSubmit} className="space-y-5 glass-card p-6">
+    <div className="mx-auto max-w-6xl px-6 py-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div>
-          <label className="block text-sm font-medium mb-1 text-cyan-100">Scenario</label>
-          <textarea
-            name="scenario"
-            required
-            rows={4}
-            className="dark-input"
-            placeholder="e.g., I want to do 20 pushups daily before breakfast and stay consistent for 3 months."
-            value={scenarioText}
-            onChange={(e) => setScenarioText(e.target.value)}
-          />
-          <p className="text-[10px] text-slate-500 mt-2">AI suggestions auto-generate when you pause typing.</p>
-
-          {suggestionsLoading ? (
-            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-              <svg className="animate-spin h-3.5 w-3.5 text-cyan-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-              Generating AI suggestions...
-            </div>
-          ) : null}
-
-          {scenarioSuggestions.length > 0 ? (
-            <div className="mt-2 space-y-1.5">
-              {scenarioSuggestions.map((suggestion, idx) => (
-                <button
-                  key={`${suggestion}-${idx}`}
-                  type="button"
-                  onClick={() => setScenarioText(suggestion)}
-                  className="w-full text-left rounded-lg border border-cyan-500/20 bg-cyan-500/8 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/14 transition"
-                >
-                  {suggestion}
-                </button>
-              ))}
-              <p className="text-[10px] text-slate-500">(Click one to use it as your scenario)</p>
-            </div>
-          ) : null}
-
-          {suggestionError ? <p className="text-red-400 text-xs mt-2">{suggestionError}</p> : null}
-          <p className="text-xs text-slate-500 mt-1">
-            The model auto-detects goal type and creates structured data.
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.26em] text-zinc-500">Goal Intake</p>
+          <h1 className="mt-1 text-2xl font-bold text-zinc-950">Create a New Goal</h1>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="block text-sm font-medium mb-1 text-cyan-100">Priority</label>
-            <select name="priority" className="dark-select">
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-base font-semibold text-zinc-900">Scenario</h2>
+              <label className="mb-1 block text-sm font-medium text-zinc-800">Describe your goal</label>
+              <textarea
+                name="scenario"
+                required
+                className={`dark-input w-full resize-none transition-all ${
+                  hasVisibleSuggestions ? "min-h-[140px]" : "min-h-[200px]"
+                }`}
+                placeholder="e.g., I want to do 20 pushups daily before breakfast and stay consistent for 3 months."
+                value={scenarioText}
+                onChange={(e) => setScenarioText(e.target.value)}
+              />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-cyan-100">Deadline (optional for habits)</label>
-            <input name="deadline" type="date" className="dark-input" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-cyan-100">Weekly Hours (optional)</label>
-            <input name="weekly_hours" type="number" step="0.5" min="0.5" max="80" className="dark-input" placeholder="e.g., 10" />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1 text-cyan-100">Material URLs (one per line)</label>
-          <textarea
-            name="urls"
-            rows={4}
-            className="dark-input font-mono text-sm"
-            placeholder={"https://youtube.com/playlist?list=...\nhttps://github.com/user/repo\nhttps://example.com/syllabus.html"}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input type="checkbox" name="user_materials_only" id="umo" className="accent-cyan-500" />
-          <label htmlFor="umo" className="text-sm text-cyan-100">
-            Use only my uploaded materials (no web supplementation)
-          </label>
-        </div>
-
-        {/* Restricted Time Slots */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-medium text-cyan-100">Restricted Time Slots</label>
-            <button
-              type="button"
-              onClick={addRestrictedSlot}
-              className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
-            >
-              + Add Restriction
-            </button>
-          </div>
-          <p className="text-xs text-slate-500 mb-2">
-            Times when you do NOT want this goal scheduled (e.g., lunch break, meetings).
-          </p>
-          {restrictedSlots.map((slot, idx) => (
-            <div key={idx} className="flex flex-col gap-2 border border-white/[0.08] rounded-lg p-3 mb-2 bg-white/[0.02]">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  <label className="text-xs text-slate-500">From</label>
-                  <select
-                    value={slot.start_hour}
-                    onChange={(e) => updateRestrictedSlot(idx, "start_hour", Number(e.target.value))}
-                    className="dark-select text-sm !w-auto"
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, "0")}:00
-                      </option>
-                    ))}
-                  </select>
+              {suggestionsLoading ? (
+                <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+                  <svg className="h-3.5 w-3.5 animate-spin text-zinc-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Generating AI suggestions...
                 </div>
-                <div className="flex items-center gap-1">
-                  <label className="text-xs text-slate-500">To</label>
-                  <select
-                    value={slot.end_hour}
-                    onChange={(e) => updateRestrictedSlot(idx, "end_hour", Number(e.target.value))}
-                    className="dark-select text-sm !w-auto"
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, "0")}:00
-                      </option>
+              ) : null}
+
+              {scenarioSuggestions.length > 0 ? (
+                <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+                  <p className="mb-1 px-1 text-[11px] font-medium text-zinc-500">AI Suggestions</p>
+                  <div className="space-y-1">
+                    {scenarioSuggestions.map((suggestion, idx) => (
+                      <div key={`${suggestion}-${idx}`} className="flex items-start justify-between gap-3 rounded-lg bg-white px-2.5 py-2">
+                        <p className="text-xs leading-relaxed text-zinc-700">{suggestion}</p>
+                        <Button
+                          type="button"
+                          onClick={() => setScenarioText(suggestion)}
+                          variant="outline"
+                          size="xs"
+                          className="shrink-0 border-zinc-300 text-[11px] text-zinc-700"
+                        >
+                          Apply
+                        </Button>
+                      </div>
                     ))}
-                  </select>
+                  </div>
                 </div>
-                <button
+              ) : null}
+
+              {suggestionError ? <p className="mt-2 text-xs text-red-600">{suggestionError}</p> : null}
+            </section>
+
+            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-base font-semibold text-zinc-900">Materials</h2>
+              <label className="mb-1 block text-sm font-medium text-zinc-800">Material URLs (one per line)</label>
+              <textarea
+                name="urls"
+                className="dark-input min-h-[160px] w-full resize-none font-mono text-sm"
+                placeholder={"https://youtube.com/playlist?list=...\nhttps://github.com/user/repo\nhttps://example.com/syllabus.html"}
+              />
+
+              <div className="mt-3 flex items-center gap-2">
+                <input type="checkbox" name="user_materials_only" id="umo" className="accent-zinc-900" />
+                <label htmlFor="umo" className="text-sm text-zinc-700">
+                  Use only my uploaded materials
+                </label>
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-base font-semibold text-zinc-900">Planning Preferences</h2>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-zinc-800">Priority</label>
+                  <input type="hidden" name="priority" value={priority} />
+                  <Select value={priority} onValueChange={setPriority}>
+                    <SelectTrigger className="h-10 border-zinc-300 text-zinc-900">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent align="start" position="popper" className="w-[var(--radix-select-trigger-width)]">
+                      {PRIORITIES.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p.charAt(0).toUpperCase() + p.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-zinc-800">Weekly Hours</label>
+                  <input name="weekly_hours" type="number" step="0.5" min="0.5" max="80" className="dark-input" placeholder="e.g., 10" />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-zinc-800">Deadline (optional for habits)</label>
+                  <input
+                    type="hidden"
+                    name="deadline"
+                    value={deadlineDate ? format(deadlineDate, "yyyy-MM-dd") : ""}
+                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 w-full justify-start border-zinc-300 bg-white text-left text-zinc-900"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {deadlineDate ? format(deadlineDate, "PPP") : "Pick a deadline"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0"
+                      align="start"
+                      side="bottom"
+                      sideOffset={8}
+                      collisionPadding={16}
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={deadlineDate}
+                        onSelect={setDeadlineDate}
+                        captionLayout="label"
+                        className="w-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium text-zinc-800">Restricted Time Slots</label>
+                <Button
                   type="button"
-                  onClick={() => removeRestrictedSlot(idx)}
-                  className="ml-auto text-xs text-red-400 hover:text-red-300"
+                  onClick={addRestrictedSlot}
+                  variant="outline"
+                  size="xs"
+                  className="border-zinc-300 text-zinc-700"
                 >
-                  Remove
-                </button>
+                  + Add
+                </Button>
               </div>
-              <div className="flex gap-1">
-                {DAY_LABELS.map((label, day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(idx, day)}
-                    className={`px-2 py-0.5 text-xs rounded-full border ${
-                      slot.days.includes(day)
-                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
-                        : "bg-white/[0.02] text-slate-500 border-white/[0.1]"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+
+              {restrictedSlots.map((slot, idx) => (
+                <div key={idx} className="mb-2 flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">From</label>
+                      <Select
+                        value={String(slot.start_hour)}
+                        onValueChange={(value) => updateRestrictedSlot(idx, "start_hour", Number(value))}
+                      >
+                        <SelectTrigger className="h-9 border-zinc-300 bg-white text-xs text-zinc-900">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start" position="popper" className="w-[var(--radix-select-trigger-width)]">
+                          {HOUR_OPTIONS.map((h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {formatHour(h)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-zinc-500">To</label>
+                      <Select
+                        value={String(slot.end_hour)}
+                        onValueChange={(value) => updateRestrictedSlot(idx, "end_hour", Number(value))}
+                      >
+                        <SelectTrigger className="h-9 border-zinc-300 bg-white text-xs text-zinc-900">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start" position="popper" className="w-[var(--radix-select-trigger-width)]">
+                          {HOUR_OPTIONS.map((h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {formatHour(h)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => removeRestrictedSlot(idx)}
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {DAY_LABELS.map((label, day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleDay(idx, day)}
+                        className={`rounded-full border px-2 py-0.5 text-xs ${
+                          slot.days.includes(day)
+                            ? "border-zinc-900 bg-zinc-900 text-white"
+                            : "border-zinc-300 bg-white text-zinc-500"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
               </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="h-10 bg-zinc-900 px-5 text-sm font-semibold text-white hover:bg-zinc-800"
+              >
+                {loading ? "Creating..." : "Create Goal From Scenario"}
+              </Button>
             </div>
-          ))}
+          </div>
         </div>
-
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-2 rounded-lg hover:brightness-110 disabled:opacity-50 transition"
-        >
-          {loading ? "Creating..." : "Create Goal From Scenario"}
-        </button>
       </form>
     </div>
   );

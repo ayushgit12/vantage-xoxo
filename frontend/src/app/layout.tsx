@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import { Manrope, Space_Grotesk, Geist } from "next/font/google";
 import ChatBot from "@/components/ChatBot";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -27,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className={`${manrope.variable} ${spaceGrotesk.variable} app-shell ambient-bg`}>
         <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-md flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5">
