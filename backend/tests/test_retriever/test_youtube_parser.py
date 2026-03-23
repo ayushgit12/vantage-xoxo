@@ -2,6 +2,7 @@ from agents.retriever.parsers.youtube_parser import (
     _clean_caption_text,
     _extract_playlist_id,
     _extract_video_id,
+    _is_playlist_url,
 )
 
 

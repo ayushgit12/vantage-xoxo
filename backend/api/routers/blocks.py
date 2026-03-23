@@ -34,7 +34,7 @@ def _apply_block_status(plan_doc: dict, block_id: str, status: BlockStatus) -> b
     """Update a block status inside a plan document in-memory."""
     for block in plan_doc.get("micro_blocks", []):
         if block.get("block_id") == block_id:
-            block["status"] = status
+            block["status"] = status.value if isinstance(status, BlockStatus) else str(status)
             return True
     return False
 

@@ -34,10 +34,22 @@ def schedule_micro_blocks(
     seed: int = 42,
     max_topics_per_day: int = 2,
     max_daily_minutes: int = MAX_DAILY_MINUTES,
+    preferred_block_durations_by_topic: dict[str, int] | None = None,
+    daily_capacity_profile: dict[str, float] | None = None,
+    max_disruption_budget: float | None = None,
 ) -> list[MicroBlock]:
     """Deterministically schedule micro blocks into available slots."""
     rng = random.Random(seed)
+    del rng  # Reserved for deterministic tie-break hooks.
     blocks: list[MicroBlock] = []
+    preferred_durations = preferred_block_durations_by_topic or {}
+    capacity_profile = daily_capacity_profile or {}
+
+    # This parameter is consumed by future replan policies; keep it bounded.
+    if max_disruption_budget is not None:
+        max_disruption_budget = max(0.0, min(0.5, float(max_disruption_budget)))
+
+    day_keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
     # Get contiguous available blocks (min 1 hour)
     contiguous = availability.get_contiguous_blocks(min_slots=2)
@@ -83,12 +95,16 @@ def schedule_micro_blocks(
 
             # Check daily cap
             day_key = str(available_block[0].date)
+            weekday_key = day_keys[available_block[0].date.weekday()]
+            day_mult = float(capacity_profile.get(weekday_key, 1.0) or 1.0)
+            day_mult = max(0.7, min(1.3, day_mult))
+            day_cap = max(MIN_BLOCK_MINUTES, int(max_daily_minutes * day_mult))
             used_today = daily_used.get(day_key, 0)
-            if used_today >= max_daily_minutes:
+            if used_today >= day_cap:
                 slot_index += 1
                 continue
 
-            daily_remaining = max_daily_minutes - used_today
+            daily_remaining = day_cap - used_today
             if daily_remaining < MIN_BLOCK_MINUTES:
                 slot_index += 1
                 continue
@@ -102,11 +118,15 @@ def schedule_micro_blocks(
 
             # Determine desired duration, then quantize to 30-min slot granularity
             # so consumed slots and stored duration always match.
+            preferred_duration = int(preferred_durations.get(topic_id, DEFAULT_BLOCK_MINUTES) or DEFAULT_BLOCK_MINUTES)
+            preferred_duration = max(MIN_BLOCK_MINUTES, min(MAX_BLOCK_MINUTES, preferred_duration))
+
             desired_minutes = min(
                 remaining,
                 available_minutes,
                 MAX_BLOCK_MINUTES,
                 daily_remaining,
+                preferred_duration,
             )
 
             max_schedulable_slots = min(

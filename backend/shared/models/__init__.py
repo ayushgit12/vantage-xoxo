@@ -5,6 +5,14 @@ from .plan import Plan, MacroAllocation, MicroBlock, BlockStatus
 from .user import UserProfile, TimeWindow
 from .constraint import TimeConstraint, ConstraintType
 from .agent_log import AgentLog
+from .planner_ai import (
+    PlannerAIInput,
+    PlannerAIRecommendation,
+    PlannerAIFallbackReason,
+    PlannerQualityScore,
+    PlannerRiskFlags,
+    PlannerExplanation,
+)
 
 __all__ = [
     "Goal", "GoalCreate", "GoalUpdate", "GoalType", "GoalStatus",
@@ -14,4 +22,6 @@ __all__ = [
     "UserProfile", "TimeWindow",
     "TimeConstraint", "ConstraintType",
     "AgentLog",
+    "PlannerAIInput", "PlannerAIRecommendation", "PlannerAIFallbackReason",
+    "PlannerQualityScore", "PlannerRiskFlags", "PlannerExplanation",
 ]

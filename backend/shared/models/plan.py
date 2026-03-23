@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
@@ -50,3 +51,11 @@ class Plan(BaseModel):
     # meaningful progress without a separate knowledge fetch.
     # Progress = sum(done_block.duration_min) / (total_estimated_hours * 60)
     total_estimated_hours: float = 0.0
+    # AI/quality metadata — optional for backward compatibility.
+    quality_score: dict[str, Any] | None = None
+    risk_flags: dict[str, bool] | None = None
+    ai_recommendation_snapshot: dict[str, Any] | None = None
+    fallback_reason: str | None = None
+    disruption_index: float | None = None
+    used_fallback: bool = False
+    retry_triggered: bool = False

@@ -20,11 +20,25 @@ async def replan_all(
     """Replan ALL goals together so nothing overlaps."""
     try:
         plans = await replan_all_goals(user_id, window_days=window)
+        quality_scores = [
+            float(p.quality_score.get("overall_score", 0.0))
+            for p in plans
+            if isinstance(p.quality_score, dict)
+        ]
+        disruptions = [
+            float(p.disruption_index)
+            for p in plans
+            if isinstance(p.disruption_index, (int, float))
+        ]
         return {
             "status": "completed",
             "goals_planned": len(plans),
             "total_blocks": sum(len(p.micro_blocks) for p in plans),
             "window": window,
+            "avg_quality_score": round(sum(quality_scores) / len(quality_scores), 2) if quality_scores else None,
+            "avg_disruption_index": round(sum(disruptions) / len(disruptions), 4) if disruptions else None,
+            "fallback_used_count": sum(1 for p in plans if p.used_fallback),
+            "retry_triggered_count": sum(1 for p in plans if p.retry_triggered),
         }
     except Exception as e:
         logger.exception("Global replan failed for user %s", user_id)
@@ -50,6 +64,11 @@ async def generate_plan(
             "plan_id": plan.plan_id,
             "blocks": len(plan.micro_blocks),
             "window": window,
+            "quality_score": plan.quality_score,
+            "risk_flags": plan.risk_flags,
+            "disruption_index": plan.disruption_index,
+            "used_fallback": plan.used_fallback,
+            "retry_triggered": plan.retry_triggered,
         }
     except Exception as e:
         logger.exception("Planner failed for goal %s", goal_id)

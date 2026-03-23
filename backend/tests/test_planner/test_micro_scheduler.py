@@ -43,3 +43,21 @@ def test_no_overlapping_blocks(sample_knowledge):
             assert a_end <= b.start_dt or b_end <= a.start_dt, (
                 f"Overlap: {a.start_dt}-{a_end} vs {b.start_dt}-{b_end}"
             )
+
+
+def test_preferred_block_duration_is_applied(sample_knowledge):
+    """Preferred per-topic duration should shape scheduled block lengths."""
+    user = UserProfile(user_id="u1")
+    matrix = build_availability_matrix(user, constraints=[], window_days=7)
+    macro = compute_macro_allocations(sample_knowledge, "2026-06-01T00:00:00", window_days=7)
+    blocks = schedule_micro_blocks(
+        knowledge=sample_knowledge,
+        macro_allocations=macro,
+        availability=matrix,
+        seed=42,
+        preferred_block_durations_by_topic={"t1": 30},
+    )
+
+    t1_blocks = [b for b in blocks if b.topic_id == "t1"]
+    if t1_blocks:
+        assert all(b.duration_min <= 30 for b in t1_blocks)

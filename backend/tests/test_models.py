@@ -2,7 +2,7 @@
 
 import pytest
 
-from shared.models import Goal, GoalCreate, GoalKnowledge, Topic, UserProfile
+from shared.models import Goal, GoalCreate, GoalKnowledge, Topic, UserProfile, Plan
 from shared.models.goal import GoalStatus
 from shared.models.user import TimeWindow
 
@@ -54,6 +54,25 @@ def test_time_window_allows_overnight_ranges():
     assert window.end_hour == 7
 
 
-def test_time_window_rejects_same_start_and_end():
-    with pytest.raises(ValueError):
-        TimeWindow(start_hour=9, end_hour=9, days=[0])
+def test_time_window_auto_extends_same_start_and_end():
+    window = TimeWindow(start_hour=9, end_hour=9, days=[0])
+    assert window.start_hour == 9
+    assert window.end_hour == 10
+
+
+def test_plan_allows_quality_metadata_fields():
+    plan = Plan(
+        user_id="u1",
+        goal_id="g1",
+        quality_score={"overall_score": 80.0},
+        risk_flags={"deadline_risk": False},
+        ai_recommendation_snapshot={"confidence": 0.8},
+        fallback_reason=None,
+        disruption_index=0.12,
+        used_fallback=False,
+        retry_triggered=True,
+    )
+
+    dumped = plan.model_dump(mode="json")
+    assert dumped["quality_score"]["overall_score"] == 80.0
+    assert dumped["retry_triggered"] is True

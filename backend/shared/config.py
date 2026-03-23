@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # Calendar
     use_mock_calendar: bool = True
 
+    # Planner AI controls
+    planner_ai_enabled: bool = False
+    planner_ai_model: str = "gpt-4.1"
+    planner_ai_timeout_ms: int = 6000
+    planner_ai_min_confidence: float = 0.6
+    planner_ai_cache_ttl_seconds: int = 3600
+    planner_ai_explanations_enabled: bool = True
+
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent / ".env"), "extra": "ignore"}
 
 

@@ -38,6 +38,38 @@ Frontend (Next.js) → API Gateway (FastAPI) → Service Bus → Agent Workers
 | Planner: explanation | Optional | Cached |
 | Executor | NO | Pure API calls |
 
+## Planner AI Controls
+
+Planner scheduling remains deterministic. AI is used for recommendation, scoring support,
+and optional explanations with guarded fallback.
+
+Environment flags:
+
+- `PLANNER_AI_ENABLED` (default `false`)
+- `PLANNER_AI_MODEL` (default `gpt-4.1`)
+- `PLANNER_AI_TIMEOUT_MS` (default `6000`)
+- `PLANNER_AI_MIN_CONFIDENCE` (default `0.6`)
+- `PLANNER_AI_CACHE_TTL_SECONDS` (default `3600`)
+- `PLANNER_AI_EXPLANATIONS_ENABLED` (default `true`)
+
+Plan metadata now includes:
+
+- `quality_score`
+- `risk_flags`
+- `ai_recommendation_snapshot`
+- `fallback_reason`
+- `disruption_index`
+- `used_fallback`
+- `retry_triggered`
+
+Planner telemetry summary includes:
+
+- `planner_ai` mode (`model` or `fallback`)
+- AI confidence and fallback reason
+- average quality score
+- average disruption index
+- retry trigger count
+
 ## Project Structure
 
 ```
@@ -171,6 +203,26 @@ cd backend
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
+
+## Test Insights (Optional LLM Layer)
+
+Run the full integration scenarios and generate a machine-readable report:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/llm_test_insights.py --pytest-target tests/test_workflow_full_integration.py
+```
+
+Enable LLM analysis for both pass and fail runs:
+
+```bash
+export LLM_INSIGHTS_ENABLED=1
+export LLM_INSIGHTS_MODEL=gpt-4.1
+python scripts/llm_test_insights.py --pytest-target tests/test_workflow_full_integration.py
+```
+
+Reports are written to `backend/tests/artifacts/` as JSON and Markdown.
 
 ## Deploying to Azure
 

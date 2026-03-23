@@ -157,6 +157,10 @@ export const updateConstraint = (constraintId: string, body: ConstraintUpdateReq
 export const deleteConstraint = (constraintId: string) =>
   apiFetch(`/api/constraints/${constraintId}`, { method: "DELETE" });
 
+// ─── Telemetry / Planner Stats ───
+export const getPlannerStats = () =>
+  apiFetch<PlannerStatsResponse>("/api/telemetry/planner/stats");
+
 // ─── Types ───
 export interface GoalCreate {
   title: string;
@@ -281,6 +285,25 @@ export interface Plan {
   // Use this as the progress denominator so progress reflects the full goal,
   // not just the current 7-day window.
   total_estimated_hours: number;
+  quality_score?: {
+    overall_score: number;
+    feasibility_score: number;
+    load_balance_score: number;
+    fragmentation_score: number;
+    deadline_risk_score: number;
+    warnings: string[];
+  } | null;
+  risk_flags?: {
+    overload_risk: boolean;
+    deadline_risk: boolean;
+    fragmentation_risk: boolean;
+    low_confidence_inputs: boolean;
+  } | null;
+  ai_recommendation_snapshot?: Record<string, unknown> | null;
+  fallback_reason?: string | null;
+  disruption_index?: number | null;
+  used_fallback?: boolean;
+  retry_triggered?: boolean;
 }
 
 export interface TimeWindow {
@@ -385,4 +408,27 @@ export interface ScenarioSuggestionsResponse {
 export interface GoalSuggestionsResponse {
   goal_id: string;
   suggestions: string[];
+}
+
+export interface PlannerStatsResponse {
+  user_id: string;
+  total_plans: number;
+  total_blocks: number;
+  scheduled_blocks: number;
+  done_blocks: number;
+  partial_blocks: number;
+  missed_blocks: number;
+  cancelled_blocks: number;
+  completion_ratio: number;
+  miss_ratio: number;
+  avg_blocks_per_plan: number;
+  estimated_hours_total: number;
+  avg_quality_score: number | null;
+  avg_disruption_index: number | null;
+  avg_ai_confidence: number | null;
+  used_fallback_count: number;
+  retry_triggered_count: number;
+  quality_score_available: number;
+  disruption_index_available: number;
+  ai_confidence_available: number;
 }

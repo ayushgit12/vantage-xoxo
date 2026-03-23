@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import numpy as np
@@ -107,12 +107,24 @@ async def chat_message(
     """Stream a chat response from Ryuk using RAG over the user's data."""
     settings = get_settings()
     if not (settings.llm_api_key or settings.azure_openai_api_key):
-        raise HTTPException(status_code=500, detail="LLM API key not configured")
+        async def no_llm_response():
+            yield (
+                "I can help once LLM configuration is available. "
+                "For now, please set an API key and try again."
+            )
+
+        return StreamingResponse(no_llm_response(), media_type="text/plain")
 
     # Fetch all user data
     all_goals = await goals_repo.find_many({"user_id": user_id})
     if not all_goals:
-        raise HTTPException(status_code=404, detail="No goals found. Create a goal first!")
+        async def no_goals_response():
+            yield (
+                "You do not have goals yet. Create a goal first, "
+                "then I can help with planning, study blocks, and progress."
+            )
+
+        return StreamingResponse(no_goals_response(), media_type="text/plain")
 
     knowledge_docs = []
     plan_docs = []

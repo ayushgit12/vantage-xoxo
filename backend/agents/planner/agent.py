@@ -8,6 +8,7 @@ so no two goals ever overlap.
 """
 
 import logging
+import copy
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -24,6 +25,11 @@ from shared.bus.service_bus import send_message
 from shared.telemetry.tracing import get_tracer
 
 from agents.planner.availability import build_availability_matrix, AvailabilityMatrix
+from agents.planner.ai_advisor import build_planner_ai_input, get_planner_recommendation
+from agents.planner.calibration import summarize_user_execution_patterns
+from agents.planner.quality_scorer import compute_quality_score
+from agents.planner.replan import disruption_index
+from agents.planner.explainer_ai import generate_plan_explanation
 from agents.planner.macro_allocator import compute_macro_allocations
 from agents.planner.micro_scheduler import schedule_micro_blocks, MAX_DAILY_MINUTES
 from agents.planner.habit_scheduler import schedule_habit_blocks
@@ -203,6 +209,23 @@ async def replan_all_goals(
             len(goals_with_knowledge), user_id,
         )
 
+        # 4b. Compute AI recommendation with safe fallback. This does not yet
+        # alter deterministic scheduling decisions; it is prepared for later steps.
+        total_topics = sum(len(k.topics) for _, k in goals_with_knowledge)
+        calibration = await summarize_user_execution_patterns(user_id)
+        planner_input = build_planner_ai_input(
+            user_id=user_id,
+            window_days=window_days,
+            active_goals_count=len(goals_with_knowledge),
+            active_topics_count=total_topics,
+            recent_done_ratio=float(calibration.get("recent_done_ratio", 0.0) or 0.0),
+            recent_partial_ratio=float(calibration.get("recent_partial_ratio", 0.0) or 0.0),
+            recent_missed_ratio=float(calibration.get("recent_missed_ratio", 0.0) or 0.0),
+            day_capacity_profile=calibration.get("day_capacity_profile", {}),
+            topic_overrun_factors=calibration.get("topic_overrun_factors", {}),
+        )
+        ai_rec, ai_fallback_reason = await get_planner_recommendation(planner_input)
+
         # 5. Collect done blocks from existing plans (preserve past work)
         now = datetime.now(timezone.utc)
         done_blocks_by_goal: dict[str, list] = {}
@@ -254,6 +277,9 @@ async def replan_all_goals(
 
         # 6. Schedule each goal in priority order, sharing the availability
         plans: list[Plan] = []
+        quality_scores: list[float] = []
+        disruption_scores: list[float] = []
+        retry_count = 0
         settings = get_settings()
 
         for goal_doc, knowledge in goals_with_knowledge:
@@ -273,12 +299,23 @@ async def replan_all_goals(
                     done_minutes_for_goal[tid] = done_minutes_for_goal.get(tid, 0) + dur // 2
 
             # Macro allocation — window-scoped, deducts already-done effort.
+            goal_urgency_boost = float(ai_rec.urgency_boost_per_goal.get(goal_id, 0.0) or 0.0)
+            urgency_boost_by_topic = {
+                topic.topic_id: goal_urgency_boost for topic in knowledge.topics
+            }
+            effort_adjustment_by_topic = {
+                topic.topic_id: float(calibration.get("topic_overrun_factors", {}).get(topic.topic_id, 1.0) or 1.0)
+                for topic in knowledge.topics
+            }
+
             macro = compute_macro_allocations(
                 knowledge=knowledge,
                 deadline=goal_doc["deadline"],
                 target_weekly_effort=goal_doc.get("target_weekly_effort"),
                 window_days=window_days,
                 done_minutes_per_topic=done_minutes_for_goal,
+                effort_adjustment_per_topic=effort_adjustment_by_topic,
+                urgency_boost_per_topic=urgency_boost_by_topic,
             )
 
             # Temporarily block this goal's restricted time slots
@@ -296,14 +333,77 @@ async def replan_all_goals(
             # Keep daily load bounded so new plans are spread across multiple days
             # instead of being packed into a single long day.
             per_day_cap = min(int(user.daily_capacity_hours * 60), MAX_DAILY_MINUTES)
-            micro_blocks = schedule_micro_blocks(
+            preferred_duration_by_topic = (
+                {topic.topic_id: ai_rec.preferred_block_minutes for topic in knowledge.topics}
+                if ai_rec.preferred_block_minutes is not None
+                else {}
+            )
+
+            base_availability = copy.deepcopy(availability)
+            primary_micro_blocks = schedule_micro_blocks(
                 knowledge=knowledge,
                 macro_allocations=macro,
-                availability=availability,
+                availability=base_availability,
                 seed=DEFAULT_SEED,
                 max_topics_per_day=user.max_topics_per_day,
                 max_daily_minutes=per_day_cap,
+                preferred_block_durations_by_topic=preferred_duration_by_topic,
+                daily_capacity_profile=calibration.get("day_capacity_profile", {}),
+                max_disruption_budget=ai_rec.max_disruption_budget,
             )
+
+            # Quality gate: if quality is low, retry once with conservative knobs.
+            done_blocks = done_blocks_by_goal.get(goal_id, [])
+            from shared.models import MicroBlock
+            done_block_models = [MicroBlock(**b) for b in done_blocks]
+
+            primary_candidate_plan = Plan(
+                user_id=user_id,
+                goal_id=goal_id,
+                plan_window_days=window_days,
+                seed=DEFAULT_SEED,
+                macro_allocations=macro,
+                micro_blocks=done_block_models + primary_micro_blocks,
+                total_estimated_hours=knowledge.estimated_total_hours,
+            )
+            primary_quality = compute_quality_score(primary_candidate_plan, deadline=goal_doc.get("deadline"))
+
+            retry_triggered = False
+            micro_blocks = primary_micro_blocks
+            quality = primary_quality
+            if primary_quality.overall_score < 65.0:
+                retry_triggered = True
+                retry_count += 1
+                conservative_availability = copy.deepcopy(availability)
+                conservative_micro_blocks = schedule_micro_blocks(
+                    knowledge=knowledge,
+                    macro_allocations=macro,
+                    availability=conservative_availability,
+                    seed=DEFAULT_SEED,
+                    max_topics_per_day=max(1, user.max_topics_per_day - 1),
+                    max_daily_minutes=max(30, int(per_day_cap * 0.85)),
+                    preferred_block_durations_by_topic={
+                        topic.topic_id: 30 for topic in knowledge.topics
+                    },
+                    daily_capacity_profile={},
+                    max_disruption_budget=ai_rec.max_disruption_budget,
+                )
+                conservative_candidate_plan = Plan(
+                    user_id=user_id,
+                    goal_id=goal_id,
+                    plan_window_days=window_days,
+                    seed=DEFAULT_SEED,
+                    macro_allocations=macro,
+                    micro_blocks=done_block_models + conservative_micro_blocks,
+                    total_estimated_hours=knowledge.estimated_total_hours,
+                )
+                conservative_quality = compute_quality_score(
+                    conservative_candidate_plan,
+                    deadline=goal_doc.get("deadline"),
+                )
+                if conservative_quality.overall_score >= primary_quality.overall_score:
+                    micro_blocks = conservative_micro_blocks
+                    quality = conservative_quality
 
             # Restore temporarily blocked restricted slots so other goals can use them
             AvailabilityMatrix.restore_slots(temp_blocked)
@@ -315,20 +415,32 @@ async def replan_all_goals(
                     block.start_dt.date(), block.start_dt.hour, block.start_dt.minute, block.duration_min
                 )
 
-            # Merge done blocks back in
-            from shared.models import MicroBlock
-            done_blocks = done_blocks_by_goal.get(goal_id, [])
-            done_block_models = [MicroBlock(**b) for b in done_blocks]
-
             all_blocks = done_block_models + micro_blocks
 
             # Determine version
             existing_plan_id = goal_doc.get("active_plan_id")
             version = 1
+            old_plan = None
             if existing_plan_id:
                 old_plan = await plans_repo.find_by_id(existing_plan_id, id_field="plan_id")
                 if old_plan:
                     version = old_plan.get("version", 1) + 1
+
+            disruption_value = 0.0
+            if old_plan:
+                try:
+                    disruption_value = disruption_index(Plan(**old_plan), micro_blocks)
+                except Exception:
+                    disruption_value = 0.0
+            disruption_scores.append(disruption_value)
+
+            explanation = await generate_plan_explanation(
+                goal_title=goal_doc.get("title", goal_id),
+                quality=quality,
+                disruption_index=disruption_value,
+                ai_recommendation=ai_rec,
+                used_fallback=bool(ai_fallback_reason),
+            )
 
             plan = Plan(
                 user_id=user_id,
@@ -337,11 +449,25 @@ async def replan_all_goals(
                 seed=DEFAULT_SEED,
                 macro_allocations=macro,
                 micro_blocks=all_blocks,
+                explanation=explanation,
                 version=version,
                 # Snapshot knowledge total so the frontend can compute meaningful
                 # overall progress without a separate knowledge fetch.
                 total_estimated_hours=knowledge.estimated_total_hours,
+                quality_score=quality.model_dump(mode="json"),
+                risk_flags={
+                    "overload_risk": quality.load_balance_score < 60,
+                    "deadline_risk": quality.deadline_risk_score < 60,
+                    "fragmentation_risk": quality.fragmentation_score < 60,
+                    "low_confidence_inputs": bool(ai_fallback_reason),
+                },
+                ai_recommendation_snapshot=ai_rec.model_dump(mode="json"),
+                fallback_reason=ai_fallback_reason,
+                disruption_index=round(disruption_value, 4),
+                used_fallback=bool(ai_fallback_reason),
+                retry_triggered=retry_triggered,
             )
+            quality_scores.append(quality.overall_score)
 
             # Persist
             await plans_repo.upsert(plan.plan_id, plan.model_dump(mode="json"), id_field="plan_id")
@@ -349,18 +475,26 @@ async def replan_all_goals(
             plans.append(plan)
 
             logger.info(
-                "Scheduled goal %s (%s priority): %d new + %d done blocks",
+                "Scheduled goal %s (%s priority): %d new + %d done blocks; quality=%.2f; disruption=%.3f; retry=%s",
                 goal_id, goal_doc.get("priority", "medium"),
-                len(micro_blocks), len(done_blocks),
+                len(micro_blocks), len(done_blocks), quality.overall_score, disruption_value, retry_triggered,
             )
 
         # 7. Log
         duration_ms = int((time.monotonic() - t0) * 1000)
         total_blocks = sum(len(p.micro_blocks) for p in plans)
+        ai_mode = "fallback" if ai_fallback_reason else "model"
+        avg_quality = (sum(quality_scores) / len(quality_scores)) if quality_scores else 0.0
+        avg_disruption = (sum(disruption_scores) / len(disruption_scores)) if disruption_scores else 0.0
         log = AgentLog(
             agent_name="planner",
             trace_id=trace_id,
-            decision_summary=f"Global replan: {len(plans)} goals, {total_blocks} blocks over {window_days} days",
+            decision_summary=(
+                f"Global replan: {len(plans)} goals, {total_blocks} blocks over {window_days} days; "
+                f"planner_ai={ai_mode}; ai_confidence={ai_rec.confidence:.2f}; "
+                f"fallback_reason={ai_fallback_reason or 'none'}; avg_quality_score={avg_quality:.2f}; "
+                f"avg_disruption_index={avg_disruption:.3f}; planner.retry.triggered={retry_count}"
+            ),
             duration_ms=duration_ms,
         )
         await logs_repo.insert(log.model_dump(mode="json"))
