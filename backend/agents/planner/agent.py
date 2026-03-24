@@ -42,7 +42,10 @@ PRIORITY_WEIGHT = {"high": 3, "medium": 2, "low": 1}
 
 
 def _is_schedulable_goal(goal_doc: dict) -> bool:
-    """Only active goals should claim future schedule capacity."""
+    """Only active goals should claim future schedule capacity.
+
+    Paused, completed, and archived goals are excluded from scheduling.
+    """
     return goal_doc.get("status", GoalStatus.ACTIVE.value) == GoalStatus.ACTIVE.value
 
 
@@ -79,10 +82,15 @@ async def run_planner(
 
 
 async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int) -> Plan:
-    """Create recurring blocks for habit goals without retriever/macro allocation."""
+    """Create recurring blocks for habit goals without retriever/macro allocation.
+
+    Carries forward done/partial/missed blocks from the previous plan so that
+    the user's past checkmarks are never lost.
+    """
     from shared.models.goal import Goal
 
     goal = Goal(**goal_doc)
+    now = datetime.now(timezone.utc)
 
     # Habit goals still need collision-aware placement against existing plans.
     user_doc = await users_repo.find_by_id(user_id, id_field="user_id")
@@ -116,6 +124,8 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
             bstart = block.get("start_dt")
             if isinstance(bstart, str):
                 bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
+            if isinstance(bstart, datetime) and bstart.tzinfo is None:
+                bstart = bstart.replace(tzinfo=timezone.utc)
             if not bstart:
                 continue
 
@@ -127,12 +137,40 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
                 bstart.date(), bstart.hour, bstart.minute, duration_min
             )
 
+    # --- A2 FIX: Carry forward past blocks from existing habit plan ---
+    carried_blocks: list[MicroBlock] = []
+    existing_plan_id = goal_doc.get("active_plan_id")
+    if existing_plan_id:
+        old_plan_doc = await plans_repo.find_by_id(existing_plan_id, id_field="plan_id")
+        if old_plan_doc:
+            for b in old_plan_doc.get("micro_blocks", []):
+                bstart = b.get("start_dt")
+                if isinstance(bstart, str):
+                    bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
+                elif isinstance(bstart, datetime) and bstart.tzinfo is None:
+                    bstart = bstart.replace(tzinfo=timezone.utc)
+                if not bstart:
+                    continue
+                # Carry forward all past blocks (done, partial, missed)
+                if bstart < now:
+                    status = b.get("status", "scheduled")
+                    if status == "scheduled":
+                        b["status"] = "missed"  # Auto-mark stale blocks
+                    carried_blocks.append(MicroBlock(**b))
+
     blocks = schedule_habit_blocks(
         goal=goal,
         window_days=window_days,
         availability=availability,
         avoid_overlaps=True,
     )
+
+    # Determine version from existing plan
+    version = 1
+    if existing_plan_id:
+        old_plan_doc = await plans_repo.find_by_id(existing_plan_id, id_field="plan_id")
+        if old_plan_doc:
+            version = old_plan_doc.get("version", 1) + 1
 
     plan = Plan(
         user_id=user_id,
@@ -141,20 +179,32 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
         seed=DEFAULT_SEED,
         macro_allocations=[],
         micro_blocks=[],
+        version=version,
         explanation=(
             "Recurring habit schedule generated from preferred schedule "
             "with overlap avoidance against existing goal blocks"
         ),
     )
 
-    # Assign plan_id to all blocks now that we have it
+    # Assign plan_id to all NEW blocks
     for block in blocks:
         block.plan_id = plan.plan_id
-    plan.micro_blocks = blocks
+    # Also reassign plan_id on carried blocks so they belong to the new plan
+    for block in carried_blocks:
+        block.plan_id = plan.plan_id
+    plan.micro_blocks = carried_blocks + blocks
 
     await plans_repo.upsert(plan.plan_id, plan.model_dump(mode="json"), id_field="plan_id")
+    if existing_plan_id and existing_plan_id != plan.plan_id:
+        try:
+            await plans_repo.delete(existing_plan_id, id_field="plan_id")
+        except Exception:
+            pass
     await goals_repo.update(goal.goal_id, {"active_plan_id": plan.plan_id})
-    logger.info("Habit plan generated for %s with %d blocks", goal.goal_id, len(blocks))
+    logger.info(
+        "Habit plan generated for %s with %d new + %d carried blocks",
+        goal.goal_id, len(blocks), len(carried_blocks),
+    )
     return plan
 
 
@@ -236,21 +286,32 @@ async def replan_all_goals(
             plan_doc = await plans_repo.find_by_id(plan_id, id_field="plan_id")
             if not plan_doc:
                 continue
-            done = []
+            past_blocks = []
             for b in plan_doc.get("micro_blocks", []):
-                # Preserve both done AND partial blocks — partial represents real work.
-                if b.get("status") in ("done", "partial"):
-                    done.append(b)
-                    # Block the time slot precisely so no future goal overlaps it.
-                    bstart = b.get("start_dt")
-                    if isinstance(bstart, str):
-                        bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
-                    if bstart:
-                        dur = b.get("duration_min", 60)
-                        availability.block_slot_range(
-                            bstart.date(), bstart.hour, bstart.minute, dur
-                        )
-            done_blocks_by_goal[goal_doc["goal_id"]] = done
+                bstart = b.get("start_dt")
+                if isinstance(bstart, str):
+                    bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
+                if isinstance(bstart, datetime) and bstart.tzinfo is None:
+                    bstart = bstart.replace(tzinfo=timezone.utc)
+
+                status = b.get("status", "scheduled")
+
+                # A1 FIX: Preserve ALL past blocks (done, partial, missed).
+                # Auto-mark stale past SCHEDULED blocks as MISSED.
+                is_past = bstart and bstart < now
+                if status in ("done", "partial", "missed"):
+                    past_blocks.append(b)
+                elif is_past and status == "scheduled":
+                    b["status"] = "missed"
+                    past_blocks.append(b)
+
+                # Block time slots for done/partial so future goals don't overlap.
+                if status in ("done", "partial") and bstart:
+                    dur = b.get("duration_min", 60)
+                    availability.block_slot_range(
+                        bstart.date(), bstart.hour, bstart.minute, dur
+                    )
+            done_blocks_by_goal[goal_doc["goal_id"]] = past_blocks
 
         # 5b. Block all active habit-goal blocks so learning sessions never overlap them.
         # Habit goals are excluded from goals_with_knowledge (no GoalKnowledge doc),
@@ -270,6 +331,8 @@ async def replan_all_goals(
                 bstart = b.get("start_dt")
                 if isinstance(bstart, str):
                     bstart = datetime.fromisoformat(bstart.replace("Z", "+00:00"))
+                if isinstance(bstart, datetime) and bstart.tzinfo is None:
+                    bstart = bstart.replace(tzinfo=timezone.utc)
                 if bstart:
                     availability.block_slot_range(
                         bstart.date(), bstart.hour, bstart.minute, b.get("duration_min", 60)
@@ -471,6 +534,12 @@ async def replan_all_goals(
 
             # Persist
             await plans_repo.upsert(plan.plan_id, plan.model_dump(mode="json"), id_field="plan_id")
+            old_plan_id = goal_doc.get("active_plan_id")
+            if old_plan_id and old_plan_id != plan.plan_id:
+                try:
+                    await plans_repo.delete(old_plan_id, id_field="plan_id")
+                except Exception:
+                    pass
             await goals_repo.update(goal_id, {"active_plan_id": plan.plan_id})
             plans.append(plan)
 

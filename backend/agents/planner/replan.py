@@ -88,10 +88,12 @@ def enforce_disruption_budget(
             chosen[s] = b
 
     adjusted_future = sorted(chosen.values(), key=lambda x: x.start_dt)
-    past_or_done = [
-        b for b in existing_plan.micro_blocks
-        if b.start_dt < now or b.status in (BlockStatus.DONE, BlockStatus.PARTIAL)
-    ]
+    past_or_done = []
+    for b in existing_plan.micro_blocks:
+        if b.start_dt < now or b.status in (BlockStatus.DONE, BlockStatus.PARTIAL):
+            if b.start_dt < now and b.status == BlockStatus.SCHEDULED:
+                b.status = BlockStatus.MISSED
+            past_or_done.append(b)
     merged = past_or_done + adjusted_future
     adjusted_idx = disruption_index(existing_plan, merged)
     return merged, adjusted_idx, True
@@ -110,10 +112,12 @@ def compute_replan_diff(
 
     # Blocks in existing that are done or in the past: keep them
     now = datetime.now(timezone.utc)
-    kept = [
-        b for b in existing_plan.micro_blocks
-        if b.status == BlockStatus.DONE or b.start_dt < now
-    ]
+    kept = []
+    for b in existing_plan.micro_blocks:
+        if b.status in (BlockStatus.DONE, BlockStatus.PARTIAL) or b.start_dt < now:
+            if b.start_dt < now and b.status == BlockStatus.SCHEDULED:
+                b.status = BlockStatus.MISSED
+            kept.append(b)
 
     # New blocks that replace future scheduled blocks
     added = [b for b in new_blocks if b.block_id not in existing_ids]
@@ -141,10 +145,12 @@ def apply_replan(
     now = datetime.now(timezone.utc)
 
     # Keep blocks that are done or in the past
-    kept = [
-        b for b in existing_plan.micro_blocks
-        if b.status == BlockStatus.DONE or b.start_dt < now
-    ]
+    kept = []
+    for b in existing_plan.micro_blocks:
+        if b.status in (BlockStatus.DONE, BlockStatus.PARTIAL) or b.start_dt < now:
+            if b.start_dt < now and b.status == BlockStatus.SCHEDULED:
+                b.status = BlockStatus.MISSED
+            kept.append(b)
 
     # Use new blocks for future
     future_new = [b for b in new_blocks if b.start_dt >= now]

@@ -17,10 +17,15 @@ from shared.models.constraint import ConstraintType
 SLOT_MINUTES = 30
 
 
-def _hour_in_window(hour: int, start_hour: int, end_hour: int) -> bool:
+def _is_slot_in_recurring_window(slot_date: date, slot_hour: int, days_of_week: list[int], start_hour: int, end_hour: int) -> bool:
     if start_hour < end_hour:
-        return start_hour <= hour < end_hour
-    return hour >= start_hour or hour < end_hour
+        return slot_date.weekday() in days_of_week and start_hour <= slot_hour < end_hour
+    else:
+        # Overnight window
+        is_start_evening = slot_date.weekday() in days_of_week and slot_hour >= start_hour
+        prev_day = slot_date - timedelta(days=1)
+        is_next_morning = prev_day.weekday() in days_of_week and slot_hour < end_hour
+        return is_start_evening or is_next_morning
 
 
 class TimeSlot:
@@ -80,7 +85,7 @@ class AvailabilityMatrix:
     def block_recurring(self, days_of_week: list[int], start_hour: int, end_hour: int):
         """Block recurring slots (e.g., Mon/Wed 9-10)."""
         for slot in self.slots:
-            if slot.date.weekday() in days_of_week and _hour_in_window(slot.hour, start_hour, end_hour):
+            if _is_slot_in_recurring_window(slot.date, slot.hour, days_of_week, start_hour, end_hour):
                 slot.available = False
 
     def temporarily_block_recurring(
@@ -89,11 +94,7 @@ class AvailabilityMatrix:
         """Block recurring slots and return the ones that were newly blocked (for undo)."""
         newly_blocked: list[TimeSlot] = []
         for slot in self.slots:
-            if (
-                slot.available
-                and slot.date.weekday() in days_of_week
-                and _hour_in_window(slot.hour, start_hour, end_hour)
-            ):
+            if slot.available and _is_slot_in_recurring_window(slot.date, slot.hour, days_of_week, start_hour, end_hour):
                 slot.available = False
                 newly_blocked.append(slot)
         return newly_blocked
@@ -164,8 +165,12 @@ def build_availability_matrix(
             if start and end:
                 if isinstance(start, str):
                     start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                    if start.tzinfo is None:
+                        start = start.replace(tzinfo=timezone.utc)
                 if isinstance(end, str):
                     end = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    if end.tzinfo is None:
+                        end = end.replace(tzinfo=timezone.utc)
                 if isinstance(start, datetime) and isinstance(end, datetime):
                     duration_min = int((end - start).total_seconds() // 60)
                     if duration_min > 0:
@@ -192,10 +197,7 @@ def build_availability_matrix(
         for slot in matrix.slots:
             in_preferred = False
             for window in user.preferred_time_windows:
-                if (
-                    slot.date.weekday() in window.days
-                    and _hour_in_window(slot.hour, window.start_hour, window.end_hour)
-                ):
+                if _is_slot_in_recurring_window(slot.date, slot.hour, window.days, window.start_hour, window.end_hour):
                     in_preferred = True
                     break
             slot._preferred = in_preferred  # type: ignore

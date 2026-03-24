@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -19,7 +20,7 @@ from shared.models import (
 )
 from shared.models.goal import GoalCategory, GoalPriority, GoalType
 from shared.models.goal import GoalStatus
-from shared.db.repositories import goals_repo
+from shared.db.repositories import goals_repo, knowledge_repo, plans_repo
 from shared.config import get_settings
 from shared.ai import run_prompt_via_graph
 from agents.intake.agent import parse_scenario_to_goal
@@ -178,8 +179,8 @@ async def get_scenario_suggestions(
             json_mode=True,
             model="gpt-4.1",
         ).strip()
-        result_text = re.sub(r"^```(?:json)?\\s*\\n?", "", result_text)
-        result_text = re.sub(r"\\n?```\\s*$", "", result_text).strip()
+        result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
+        result_text = re.sub(r"\n?```\s*$", "", result_text).strip()
         payload = json.loads(result_text)
     except Exception as exc:
         logger.exception("Scenario suggestion generation failed")
@@ -296,8 +297,8 @@ async def get_related_goal_suggestions(
             json_mode=True,
             model="gpt-4.1",
         ).strip()
-        result_text = re.sub(r"^```(?:json)?\\s*\\n?", "", result_text)
-        result_text = re.sub(r"\\n?```\\s*$", "", result_text).strip()
+        result_text = re.sub(r"^```(?:json)?\s*\n?", "", result_text)
+        result_text = re.sub(r"\n?```\s*$", "", result_text).strip()
         payload = json.loads(result_text)
     except Exception as exc:
         logger.exception("Goal suggestion generation failed for %s", goal_id)
@@ -430,6 +431,41 @@ async def delete_goal(goal_id: str, user_id: str = Depends(get_current_user_id))
     doc = await goals_repo.find_by_id(goal_id)
     if not doc or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Goal not found")
+
+    # A7 FIX: Cascade delete associated knowledge and ALL plan documents.
+    try:
+        await knowledge_repo.delete(goal_id, id_field="goal_id")
+    except Exception:
+        pass  # Knowledge may not exist for habit goals
+
+    # Delete all historical plans for this goal
+    try:
+        all_plans = await plans_repo.find_many({"goal_id": goal_id}, limit=1000)
+        for plan in all_plans:
+            await plans_repo.delete(plan["plan_id"], id_field="plan_id")
+    except Exception:
+        pass
+
+    # Delete uploaded files from blob storage
+    file_ids = doc.get("uploaded_file_ids", [])
+    if file_ids:
+        try:
+            from azure.storage.blob.aio import BlobServiceClient
+            settings = get_settings()
+            blob_client = BlobServiceClient.from_connection_string(
+                settings.azure_storage_connection_string
+            )
+            container = blob_client.get_container_client(settings.azure_storage_container)
+            for file_id in file_ids:
+                try:
+                    blob = container.get_blob_client(file_id)
+                    await blob.delete_blob()
+                except Exception:
+                    pass
+            await blob_client.close()
+        except Exception as e:
+            logger.warning("Failed to cascade delete blobs for goal %s: %s", goal_id, e)
+
     await goals_repo.delete(goal_id)
     return {"deleted": goal_id}
 

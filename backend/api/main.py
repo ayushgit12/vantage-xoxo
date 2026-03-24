@@ -15,12 +15,33 @@ from api.routers import goals, retriever, plans, blocks, sync, telemetry, users,
 logger = logging.getLogger(__name__)
 
 
+import asyncio
+from agents.planner.sweeper import sweep_all_users
+
+async def run_daily_sweeper():
+    while True:
+        try:
+            logger.info("Starting background daily sweeper...")
+            await sweep_all_users()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Error in background sweeper: %s", e)
+        # Sleep for 24 hours
+        await asyncio.sleep(86400)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     init_tracing("vantage-api")
     logger.info("Vantage API starting (env=%s)", settings.environment)
+    
+    # Start the continuous background sweeper
+    sweeper_task = asyncio.create_task(run_daily_sweeper())
+    
     yield
+    
+    sweeper_task.cancel()
     await close_database()
     logger.info("Vantage API shut down")
 

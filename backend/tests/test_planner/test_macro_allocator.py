@@ -75,3 +75,20 @@ def test_macro_urgency_boost_prioritizes_topic_when_eligible(sample_knowledge):
     base_t2_hours = sum(a.allocated_hours for a in base_allocations if a.topic_id == "t2")
     boosted_t2_hours = sum(a.allocated_hours for a in boosted_allocations if a.topic_id == "t2")
     assert boosted_t2_hours >= base_t2_hours
+
+
+def test_macro_does_not_leave_large_budget_stranded(sample_knowledge):
+    """Allocator should consume most of window budget even with gated prerequisites."""
+    target_weekly_effort = 20
+    allocations = compute_macro_allocations(
+        knowledge=sample_knowledge,
+        deadline="2026-06-01T00:00:00",
+        window_days=7,
+        target_weekly_effort=target_weekly_effort,
+    )
+
+    total_allocated = sum(a.allocated_hours for a in allocations)
+
+    # Window is 7 days, so budget ~= weekly effort.
+    # Allow tiny rounding loss, but allocator should not stop early.
+    assert total_allocated >= target_weekly_effort - 0.5

@@ -64,9 +64,12 @@ export async function triggerIngestStream(
   goalId: string,
   onProgress: (step: number, label: string, total: number) => void,
 ): Promise<void> {
+  const headers = new Headers();
+  headers.set("X-User-Id", "demo-user-001");
+
   const res = await fetch(
     `${BACKEND_URL}/api/retriever/ingest-stream?goal_id=${goalId}`,
-    { method: "POST", credentials: "include" },
+    { method: "POST", credentials: "include", headers },
   );
   if (!res.ok) throw new Error(`Ingest stream failed: ${res.status}`);
   const reader = res.body?.getReader();

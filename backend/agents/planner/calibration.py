@@ -7,7 +7,7 @@ recommendations while keeping deterministic scheduling unchanged.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from shared.db.repositories import plans_repo
@@ -20,7 +20,8 @@ def _as_datetime(value: Any) -> datetime | None:
         return value
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
         except ValueError:
             return None
     return None

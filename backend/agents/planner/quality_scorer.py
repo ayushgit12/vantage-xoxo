@@ -99,6 +99,9 @@ def compute_quality_score(
     elif isinstance(deadline, datetime):
         parsed_deadline = deadline
 
+    if parsed_deadline and parsed_deadline.tzinfo is None:
+        parsed_deadline = parsed_deadline.replace(tzinfo=timezone.utc)
+
     feasibility = _score_feasibility(plan)
     load_balance = _score_load_balance(plan)
     fragmentation = _score_fragmentation(plan)
