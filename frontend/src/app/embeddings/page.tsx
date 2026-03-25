@@ -4,6 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { BACKEND_URL } from "@/lib/env";
 import EmbeddingsScene from "@/app/embeddings/EmbeddingsScene";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DashboardCardsSkeleton, TableRowsSkeleton } from "@/components/ui/app-skeletons";
 
 /* ── Types ─────────────────────────────────────────── */
 interface EmbeddingPoint {
@@ -56,22 +66,22 @@ async function apiFetch<T>(path: string): Promise<T> {
 /* ── Detail Card ───────────────────────────────────── */
 function DetailCard({ point, data }: { point: EmbeddingPoint; data: EmbeddingData }) {
   return (
-    <div className="animate-in fade-in slide-in-from-right-2 duration-300">
-      <div className="backdrop-blur-xl bg-white/[0.04] border border-white/[0.08] rounded-2xl p-5 shadow-2xl shadow-cyan-500/5">
-        <h3 className="text-base font-semibold text-cyan-50 mb-1 leading-tight">{point.title}</h3>
+    <Card className="animate-in slide-in-from-right-2 border border-zinc-200 bg-white shadow-sm duration-300">
+      <CardContent className="space-y-4 p-5">
+        <h3 className="mb-1 text-base font-semibold leading-tight text-zinc-900">{point.title}</h3>
         {point.goal_title && (
-          <p className="text-[11px] text-cyan-400/70 font-medium tracking-wide uppercase mb-3">{point.goal_title}</p>
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-zinc-500">{point.goal_title}</p>
         )}
-        <p className="text-xs text-slate-400 leading-relaxed mb-4">{point.description || "No description available"}</p>
+        <p className="mb-4 text-xs leading-relaxed text-zinc-600">{point.description || "No description available"}</p>
 
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <div className="bg-white/[0.03] rounded-lg px-3 py-2 border border-white/[0.06]">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Est. Hours</p>
-            <p className="text-sm font-semibold text-cyan-300">{point.est_hours}h</p>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500">Est. Hours</p>
+            <p className="text-sm font-semibold text-zinc-900">{point.est_hours}h</p>
           </div>
-          <div className="bg-white/[0.03] rounded-lg px-3 py-2 border border-white/[0.06]">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Coordinates</p>
-            <p className="text-[11px] font-mono text-slate-400">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500">Coordinates</p>
+            <p className="font-mono text-[11px] text-zinc-600">
               {point.x.toFixed(2)}, {point.y.toFixed(2)}, {point.z.toFixed(2)}
             </p>
           </div>
@@ -79,22 +89,22 @@ function DetailCard({ point, data }: { point: EmbeddingPoint; data: EmbeddingDat
 
         {point.neighbors.length > 0 && (
           <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Nearest Neighbors</p>
+            <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">Nearest Neighbors</p>
             <div className="space-y-1.5">
               {point.neighbors.map((n) => {
                 const nPoint = data.points.find((p) => p.topic_id === n.topic_id);
                 return (
-                  <div key={n.topic_id} className="flex items-center justify-between bg-white/[0.02] rounded-lg px-3 py-1.5 border border-white/[0.04]">
-                    <span className="text-xs text-slate-300 truncate mr-2">{nPoint?.title || n.topic_id.slice(0, 8)}</span>
-                    <span className="text-[10px] font-mono text-cyan-400/80 shrink-0">{(n.similarity * 100).toFixed(0)}%</span>
+                  <div key={n.topic_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                    <span className="mr-2 truncate text-xs text-zinc-700">{nPoint?.title || n.topic_id.slice(0, 8)}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-zinc-500">{(n.similarity * 100).toFixed(0)}%</span>
                   </div>
                 );
               })}
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -110,9 +120,9 @@ function StatsBar({ data }: { data: EmbeddingData }) {
   return (
     <div className="flex flex-wrap gap-2">
       {stats.map((s) => (
-        <div key={s.label} className="backdrop-blur-xl bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2 flex items-baseline gap-2">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider">{s.label}</span>
-          <span className="text-xs font-semibold text-cyan-300">{s.value}</span>
+        <div key={s.label} className="flex items-baseline gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 py-2 shadow-sm">
+          <span className="text-[10px] uppercase tracking-wider text-zinc-500">{s.label}</span>
+          <span className="text-xs font-semibold text-zinc-900">{s.value}</span>
         </div>
       ))}
     </div>
@@ -153,95 +163,92 @@ export default function EmbeddingsPage() {
   const handlePointHover = useCallback((p: EmbeddingPoint | null) => setHoveredPoint(p), []);
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#060a18]">
-      {/* Ambient gradients */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-cyan-500/[0.04] blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/[0.05] blur-[120px]" />
-        <div className="absolute top-[40%] right-[20%] w-[30%] h-[30%] rounded-full bg-purple-500/[0.03] blur-[80px]" />
+    <div className="mx-auto max-w-[1300px] space-y-6 px-6 py-8">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute left-[-10%] top-[-20%] h-[60%] w-[60%] rounded-full bg-zinc-200/50 blur-[120px]" />
+        <div className="absolute bottom-[-15%] right-[-10%] h-[50%] w-[50%] rounded-full bg-zinc-300/35 blur-[140px]" />
       </div>
 
-      {/* Top bar */}
-      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-        <div className="flex items-center gap-5">
-          <Link href="/" className="text-lg font-bold text-white/90 hover:text-white transition">
-            Vantage
-          </Link>
-          <div className="h-4 w-px bg-white/10" />
-          <h1 className="text-sm font-medium text-cyan-300/80 tracking-wide">Embedding Space</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">Knowledge Graph</p>
+          <h1 className="mt-1 text-3xl font-bold text-zinc-900">Embedding Space</h1>
+          <p className="mt-1 text-sm text-zinc-600">Explore topic clusters and semantic neighbors across goals.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <select
-            value={selectedGoal}
-            onChange={(e) => setSelectedGoal(e.target.value)}
-            className="bg-white/[0.06] border border-white/[0.1] text-cyan-100 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-cyan-500/40 transition cursor-pointer appearance-none"
-          >
-            <option value="all" className="bg-[#0f172a]">All Goals</option>
-            {goals.map((g) => (
-              <option key={g.goal_id} value={g.goal_id} className="bg-[#0f172a]">
-                {g.title}
-              </option>
-            ))}
-          </select>
-
-          <Link
-            href="/goals"
-            className="text-xs text-slate-500 hover:text-cyan-400 transition"
-          >
-            ← Goals
-          </Link>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/goals">Back to goals</Link>
+          </Button>
         </div>
-      </header>
+      </div>
 
-      {/* Content */}
-      <div className="relative z-10 h-[calc(100vh-57px)] flex">
-        {/* 3D Canvas */}
-        <div className="flex-1 relative">
+      <Card className="border border-zinc-200 bg-white shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Visualization Controls</CardTitle>
+          <CardDescription>Choose scope and inspect clusters in 3D.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <div className="w-full max-w-sm">
+            <Select value={selectedGoal} onValueChange={setSelectedGoal}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select scope" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Goals</SelectItem>
+                {goals.map((g) => (
+                  <SelectItem key={g.goal_id} value={g.goal_id}>
+                    {g.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <Card className="relative min-h-[620px] border border-zinc-200 bg-white shadow-sm">
+          <CardContent className="h-[620px] p-0">
           {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center gap-4">
-                <div className="w-12 h-12 rounded-full border-2 border-cyan-400/20 border-t-cyan-400 animate-spin" />
-                <p className="text-cyan-300/50 text-sm tracking-widest uppercase">Computing embeddings…</p>
-              </div>
+            <div className="space-y-4 p-6">
+              <DashboardCardsSkeleton />
+              <TableRowsSkeleton rows={8} />
             </div>
           ) : error ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
-                  <svg className="w-7 h-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
-                  </svg>
-                </div>
-                <p className="text-red-400/80 text-sm mb-1">{error}</p>
-                <p className="text-slate-600 text-xs">Try selecting a goal with parsed topics</p>
+            <div className="flex h-full items-center justify-center">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-center">
+                <p className="mb-1 text-sm text-red-700">{error}</p>
+                <p className="text-xs text-red-600">Try selecting a goal with parsed topics.</p>
               </div>
             </div>
           ) : data ? (
             <>
               <EmbeddingsScene data={data} onPointHover={handlePointHover} />
 
-              {/* Bottom stats */}
               <div className="absolute bottom-5 left-5 z-20">
                 <StatsBar data={data} />
               </div>
 
-              {/* Interaction hint */}
-              <div className="absolute bottom-5 right-5 z-20 text-[10px] text-slate-600 space-y-0.5 text-right">
+              <div className="absolute bottom-5 right-5 z-20 space-y-0.5 text-right text-[10px] text-zinc-500">
                 <p>Drag to rotate · Scroll to zoom</p>
                 <p>Hover a node for details</p>
               </div>
             </>
           ) : null}
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* Detail sidebar */}
-        <div
-          className={`w-80 shrink-0 border-l border-white/[0.06] p-5 overflow-y-auto transition-all duration-300 ${
-            hoveredPoint ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4 pointer-events-none"
-          }`}
-        >
-          {hoveredPoint && data && <DetailCard point={hoveredPoint} data={data} />}
+        <div className="min-h-[620px]">
+          {hoveredPoint && data ? (
+            <DetailCard point={hoveredPoint} data={data} />
+          ) : (
+            <Card className="h-full border border-dashed border-zinc-300 bg-white/70 shadow-sm">
+              <CardContent className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-500">
+                Hover any node to inspect details and nearest neighbors.
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
