@@ -9,10 +9,12 @@ Just create one block per active day at the preferred time.
 """
 
 import logging
+import math
 from datetime import datetime, date, time, timedelta, timezone
 
 from shared.models.goal import Goal
 from shared.models.plan import MicroBlock
+from agents.planner.availability import AvailabilityMatrix, SLOT_MINUTES
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,8 @@ logger = logging.getLogger(__name__)
 def schedule_habit_blocks(
     goal: Goal,
     window_days: int = 7,
+    availability: AvailabilityMatrix | None = None,
+    avoid_overlaps: bool = False,
 ) -> list[MicroBlock]:
     """Create one timed block per active day within window_days.
 
@@ -43,6 +47,7 @@ def schedule_habit_blocks(
     actual_days = min(window_days, (deadline_date - today).days + 1)
 
     blocks: list[MicroBlock] = []
+    slots_needed = max(1, math.ceil(duration_min / SLOT_MINUTES))
 
     for offset in range(actual_days):
         day = today + timedelta(days=offset)
@@ -50,7 +55,76 @@ def schedule_habit_blocks(
         if day.weekday() not in active_days:
             continue
 
+        # Prefer the configured start hour, but when overlap avoidance is enabled
+        # shift within the same day to the first contiguous free run that can
+        # fit the full duration.
         start_dt = datetime.combine(day, time(start_hour, 0), tzinfo=timezone.utc)
+        if avoid_overlaps and availability is not None:
+            day_slots = [
+                s for s in availability.slots
+                if s.date == day
+            ]
+
+            candidate_start = None
+
+            # Pass 1: only starts inside preferred schedule window.
+            for i in range(0, len(day_slots) - slots_needed + 1):
+                run = day_slots[i:i + slots_needed]
+                first = run[0]
+
+                if not all(
+                    run[j + 1].date == run[j].date
+                    and (run[j + 1].hour * 60 + run[j + 1].minute)
+                    - (run[j].hour * 60 + run[j].minute) == SLOT_MINUTES
+                    for j in range(len(run) - 1)
+                ):
+                    continue
+
+                if not all(slot.available for slot in run):
+                    continue
+
+                if not (start_hour <= first.hour < end_hour):
+                    continue
+
+                candidate_start = first
+                break
+
+            # Pass 2: fallback to any free start on the same day.
+            if candidate_start is None:
+                for i in range(0, len(day_slots) - slots_needed + 1):
+                    run = day_slots[i:i + slots_needed]
+                    first = run[0]
+
+                    if not all(
+                        run[j + 1].date == run[j].date
+                        and (run[j + 1].hour * 60 + run[j + 1].minute)
+                        - (run[j].hour * 60 + run[j].minute) == SLOT_MINUTES
+                        for j in range(len(run) - 1)
+                    ):
+                        continue
+
+                    if not all(slot.available for slot in run):
+                        continue
+
+                    candidate_start = first
+                    break
+
+            if candidate_start is None:
+                # No room this day without overlap.
+                continue
+
+            start_dt = datetime.combine(
+                day,
+                time(candidate_start.hour, candidate_start.minute),
+                tzinfo=timezone.utc,
+            )
+
+            availability.block_slot_range(
+                day,
+                candidate_start.hour,
+                candidate_start.minute,
+                duration_min,
+            )
 
         block = MicroBlock(
             plan_id="",          # set by caller

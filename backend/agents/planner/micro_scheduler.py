@@ -34,10 +34,21 @@ def schedule_micro_blocks(
     seed: int = 42,
     max_topics_per_day: int = 2,
     max_daily_minutes: int = MAX_DAILY_MINUTES,
+    preferred_block_durations_by_topic: dict[str, int] | None = None,
+    daily_capacity_profile: dict[str, float] | None = None,
+    max_disruption_budget: float | None = None,
 ) -> list[MicroBlock]:
-    """Deterministically schedule micro blocks into available slots."""
+    """Deterministically schedule micro blocks into available slots chronologically."""
     rng = random.Random(seed)
+    del rng  # Reserved for deterministic tie-break hooks.
     blocks: list[MicroBlock] = []
+    preferred_durations = preferred_block_durations_by_topic or {}
+    capacity_profile = daily_capacity_profile or {}
+
+    if max_disruption_budget is not None:
+        max_disruption_budget = max(0.0, min(0.5, float(max_disruption_budget)))
+
+    day_keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
     # Get contiguous available blocks (min 1 hour)
     contiguous = availability.get_contiguous_blocks(min_slots=2)
@@ -52,71 +63,82 @@ def schedule_micro_blocks(
         slots[0].hour,  # earlier in day
     ))
 
-    # Build a queue of (topic_id, remaining_minutes) from macro allocations
-    # Aggregate per-topic since macro allocator creates per-week rows
+    # Build a queue of [topic_id, remaining_minutes] from macro allocations
     topic_minutes: dict[str, float] = {}
     for alloc in macro_allocations:
         topic_minutes[alloc.topic_id] = topic_minutes.get(alloc.topic_id, 0) + alloc.allocated_hours * 60
 
-    topic_queue: list[tuple[str, float]] = []
+    topic_queue: list[list] = []
     for topic_id, minutes in topic_minutes.items():
-        # Enforce minimum block size — round up small allocations
         if minutes < MIN_BLOCK_MINUTES:
             minutes = MIN_BLOCK_MINUTES
-        topic_queue.append((topic_id, minutes))
+        topic_queue.append([topic_id, minutes])
 
-    # Map topic_id -> Topic for resource refs
     topic_map = {t.topic_id: t for t in knowledge.topics}
 
     # Track minutes and topics used per day
     daily_used: dict[str, int] = {}  # date string -> minutes used
     daily_topics: dict[str, set] = {}  # date string -> set of topic_ids
 
-    slot_index = 0
-
-    for topic_id, total_minutes in topic_queue:
-        remaining = total_minutes
-
-        while remaining >= MIN_BLOCK_MINUTES and slot_index < len(contiguous):
-            available_block = contiguous[slot_index]
+    for available_block in contiguous:
+        while len(available_block) >= (MIN_BLOCK_MINUTES // SLOT_MINUTES):
             available_minutes = len(available_block) * SLOT_MINUTES
-
-            # Check daily cap
             day_key = str(available_block[0].date)
+            weekday_key = day_keys[available_block[0].date.weekday()]
+            day_mult = float(capacity_profile.get(weekday_key, 1.0) or 1.0)
+            day_mult = max(0.7, min(1.3, day_mult))
+            day_cap = max(MIN_BLOCK_MINUTES, int(max_daily_minutes * day_mult))
+
             used_today = daily_used.get(day_key, 0)
-            if used_today >= max_daily_minutes:
-                slot_index += 1
-                continue
+            daily_remaining = day_cap - used_today
 
-            # Check topic-per-day limit
-            if day_key not in daily_topics:
-                daily_topics[day_key] = set()
-            if topic_id not in daily_topics[day_key] and len(daily_topics[day_key]) >= max_topics_per_day:
-                slot_index += 1
-                continue
+            if daily_remaining < MIN_BLOCK_MINUTES:
+                break  # Daily cap reached, move to next contiguous block
 
-            # Determine block duration
-            daily_remaining = max_daily_minutes - used_today
-            block_minutes = min(
+            # Find first eligible topic that has remaining mins and fits daily topic limits
+            chosen_topic_idx = -1
+            for i, (topic_id, remaining) in enumerate(topic_queue):
+                if remaining < MIN_BLOCK_MINUTES:
+                    continue
+
+                topics_today = daily_topics.get(day_key, set())
+                if topic_id not in topics_today and len(topics_today) >= max_topics_per_day:
+                    continue
+
+                chosen_topic_idx = i
+                break
+
+            if chosen_topic_idx == -1:
+                break  # No topics eligible for this block
+
+            topic_id, remaining = topic_queue[chosen_topic_idx]
+
+            preferred_duration = int(preferred_durations.get(topic_id, DEFAULT_BLOCK_MINUTES) or DEFAULT_BLOCK_MINUTES)
+            preferred_duration = max(MIN_BLOCK_MINUTES, min(MAX_BLOCK_MINUTES, preferred_duration))
+
+            desired_minutes = min(
                 remaining,
                 available_minutes,
                 MAX_BLOCK_MINUTES,
                 daily_remaining,
+                preferred_duration,
             )
-            block_minutes = max(block_minutes, MIN_BLOCK_MINUTES)
-            block_minutes = int(block_minutes)
 
-            # Number of slots to consume
-            slots_needed = block_minutes // SLOT_MINUTES
-            if slots_needed > len(available_block):
-                slot_index += 1
-                continue
+            max_schedulable_slots = min(
+                len(available_block),
+                MAX_BLOCK_MINUTES // SLOT_MINUTES,
+                daily_remaining // SLOT_MINUTES,
+            )
+            slots_needed = int(desired_minutes // SLOT_MINUTES)
+            slots_needed = min(slots_needed, max_schedulable_slots)
 
-            # Use the first N slots
+            if slots_needed * SLOT_MINUTES < MIN_BLOCK_MINUTES:
+                break  # Cannot fit minimum block
+
+            block_minutes = slots_needed * SLOT_MINUTES
             used_slots = available_block[:slots_needed]
             start_slot = used_slots[0]
 
-            # Create micro block
             topic = topic_map.get(topic_id)
             resource_refs = topic.resource_refs if topic else []
 
@@ -130,35 +152,25 @@ def schedule_micro_blocks(
             )
             blocks.append(block)
 
-            # Track daily usage
             daily_used[day_key] = daily_used.get(day_key, 0) + block_minutes
+            if day_key not in daily_topics:
+                daily_topics[day_key] = set()
             daily_topics[day_key].add(topic_id)
 
-            # Mark used slots as unavailable
             for s in used_slots:
                 s.available = False
 
-            # Update remaining contiguous block
-            leftover = available_block[slots_needed:]
-            if len(leftover) >= 2:
-                contiguous[slot_index] = leftover
-            else:
-                slot_index += 1
+            available_block = available_block[slots_needed:]
+            topic_queue[chosen_topic_idx][1] -= block_minutes
 
-            remaining -= block_minutes
-
-            # Anti-fatigue: skip to next contiguous block if we just scheduled >90 min
+            # Anti-fatigue: skip to next contiguous block if we just scheduled >=90 min
             if block_minutes >= 90:
-                slot_index += 1
+                break
 
-        # If we exhaust available slots, break
-        if slot_index >= len(contiguous):
-            logger.warning(
-                "Ran out of available slots; %d minutes unscheduled for topic %s",
-                remaining, topic_id,
-            )
-            break
+    # Check if there are unscheduled minutes to log
+    unscheduled = sum(r for t, r in topic_queue if r >= MIN_BLOCK_MINUTES)
+    if unscheduled > 0:
+        logger.warning("Ran out of available slots; %.1f minutes unscheduled", unscheduled)
 
-    # Set plan_id on all blocks (caller will update)
     logger.info("Scheduled %d micro blocks", len(blocks))
     return blocks

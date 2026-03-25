@@ -16,7 +16,7 @@ def test_apply_block_status_updates_matching_block():
     changed = _apply_block_status(plan_doc, "b2", BlockStatus.DONE)
 
     assert changed is True
-    assert plan_doc["micro_blocks"][1]["status"] == BlockStatus.DONE
+    assert plan_doc["micro_blocks"][1]["status"] == BlockStatus.DONE.value
 
 
 def test_apply_block_status_returns_false_when_missing():

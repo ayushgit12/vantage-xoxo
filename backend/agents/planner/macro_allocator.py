@@ -28,6 +28,8 @@ def compute_macro_allocations(
     target_weekly_effort: float | None = None,
     window_days: int = 7,
     done_minutes_per_topic: dict[str, int] | None = None,
+    effort_adjustment_per_topic: dict[str, float] | None = None,
+    urgency_boost_per_topic: dict[str, float] | None = None,
 ) -> list[MacroAllocation]:
     """Allocate study hours for the current window only.
 
@@ -38,14 +40,22 @@ def compute_macro_allocations(
         window_days: How many days the current plan covers (default 7).
         done_minutes_per_topic: Minutes already done/partial per topic_id.
             Pass this so topics that are already finished don't get re-allocated.
+        effort_adjustment_per_topic: Optional multiplier per topic_id for expected
+            effort (bounded to [0.8, 1.5]). Values >1 increase allocated need.
+        urgency_boost_per_topic: Optional urgency boost per topic_id in [-0.5, 0.5].
+            Higher urgency is considered earlier among currently-eligible topics.
     """
     if isinstance(deadline, str):
         deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=timezone.utc)
 
     now = datetime.now(timezone.utc)
     done_minutes = done_minutes_per_topic or {}
+    effort_adj = effort_adjustment_per_topic or {}
+    urgency_boost = urgency_boost_per_topic or {}
 
     # If deadline is in the past extend it so we still get one window.
     if deadline <= now:
@@ -53,14 +63,17 @@ def compute_macro_allocations(
         deadline = now + timedelta(days=window_days)
 
     days_remaining = max((deadline - now).days, 1)
-    weeks_remaining = max(days_remaining / 7, 1.0)
+    weeks_remaining = days_remaining / 7.0
 
     # Total hours still unfinished across all topics.
     ordered_topics = _topological_sort(knowledge.topics)
     remaining_per_topic: dict[str, float] = {}
     for topic in ordered_topics:
+        effort_factor = float(effort_adj.get(topic.topic_id, 1.0) or 1.0)
+        effort_factor = max(0.8, min(1.5, effort_factor))
+        adjusted_est_hours = topic.est_hours * effort_factor
         done_h = done_minutes.get(topic.topic_id, 0) / 60.0
-        remaining_per_topic[topic.topic_id] = max(0.0, topic.est_hours - done_h)
+        remaining_per_topic[topic.topic_id] = max(0.0, adjusted_est_hours - done_h)
 
     total_remaining = sum(remaining_per_topic.values())
 
@@ -105,8 +118,10 @@ def compute_macro_allocations(
 
     # Multi-pass: each pass finds all eligible topics, caps per-topic allocation
     # to ensure variety, and cascades unlocks to downstream topics.
-    MAX_PASSES = len(ordered_topics)
-    prev_eligible_ids: set[str] = set()
+    #
+    # Use more than one pass-per-topic so we can keep allocating while budget
+    # remains, instead of stopping after eligibility set stabilization.
+    MAX_PASSES = max(len(ordered_topics) * 8, 8)
     for _ in range(MAX_PASSES):
         if budget < 0.05:
             break
@@ -127,18 +142,24 @@ def compute_macro_allocations(
         if not eligible:
             break
 
-        # Stop if no new topics became eligible compared to the last pass.
-        current_ids = {t.topic_id for t, _ in eligible}
-        if current_ids == prev_eligible_ids:
-            break
-        prev_eligible_ids = current_ids
-
         # Sort smallest-need first to maximize the number of fully-covered topics.
-        eligible.sort(key=lambda tn: tn[1])
+        # If urgency is provided, prioritize higher urgency first for this pass.
+        eligible.sort(key=lambda tn: (
+            -max(-0.5, min(0.5, float(urgency_boost.get(tn[0].topic_id, 0.0) or 0.0))),
+            tn[1],
+        ))
 
         # Cap per-topic allocation to spread budget across at least 3 topics
         # (interleaved practice) while still allowing small topics to finish.
-        per_topic_cap = max(budget / max(len(eligible), 3), 1.0)
+        # When <=2 topics are eligible, allow larger allocations so budget
+        # isn't artificially stranded by repeated tiny passes.
+        per_topic_cap = (
+            budget
+            if len(eligible) <= 2
+            else max(budget / max(len(eligible), 3), 1.0)
+        )
+
+        progress_made = False
 
         for topic, need in eligible:
             if budget < 0.05:
@@ -148,8 +169,13 @@ def compute_macro_allocations(
                 continue
             alloc_map[topic.topic_id] = alloc_map.get(topic.topic_id, 0.0) + alloc
             budget -= alloc
+            progress_made = True
             if alloc >= need - 0.01:
                 covered_in_window.add(topic.topic_id)
+
+        # Guard against pathological no-op loops.
+        if not progress_made:
+            break
 
     # Convert accumulated allocations to MacroAllocation objects.
     for topic in ordered_topics:

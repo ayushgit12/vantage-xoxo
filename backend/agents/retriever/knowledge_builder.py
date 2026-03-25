@@ -26,7 +26,10 @@ def build_knowledge(
             description=t.get("description", ""),
             est_hours=t.get("est_hours", 1.0),
             prereq_ids=[],  # resolved below
-            resource_refs=[r.ref_id for r in resource_refs if r.title in t.get("title", "")],
+            resource_refs=[
+                r.ref_id for r in resource_refs 
+                if t.get("title", "") in r.title or t.get("title", "") in r.description
+            ],
         ))
 
     # Resolve prerequisite IDs

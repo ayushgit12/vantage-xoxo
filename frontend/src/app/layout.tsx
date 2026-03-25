@@ -1,7 +1,23 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { Manrope, Space_Grotesk, Geist } from "next/font/google";
 import ChatBot from "@/components/ChatBot";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Vantage — Goal Orchestrator",
@@ -14,21 +30,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="ambient-bg">
-        <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#060a18]/80 border-b border-white/[0.06] px-6 py-3 flex items-center justify-between">
+    <html lang="en" className={cn("font-sans", geist.variable)}>
+      <body className={`${manrope.variable} ${spaceGrotesk.variable} app-shell ambient-bg`}>
+        <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-md flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5">
             <Image src="/logo.jpg" alt="Vantage" width={28} height={28} className="rounded-lg" />
-            <span className="text-lg font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
+            <span className="text-lg font-bold text-zinc-900" style={{ fontFamily: "var(--font-heading)" }}>
               Vantage
             </span>
           </a>
           <div className="flex gap-6 text-sm font-medium">
-            <a href="/goals" className="text-slate-400 hover:text-cyan-300 transition">Master Calendar</a>
-            <a href="/goals/new" className="text-slate-400 hover:text-cyan-300 transition">New Goal</a>
-            <a href="/goals/history" className="text-slate-400 hover:text-cyan-300 transition">Goals History</a>
-            <a href="/embeddings" className="text-slate-400 hover:text-cyan-300 transition">Embeddings</a>
-            <a href="/settings" className="text-slate-400 hover:text-cyan-300 transition">Settings</a>
+            <a href="/goals" className="text-zinc-600 hover:text-zinc-900 transition">Master Calendar</a>
+            <a href="/goals/new" className="text-zinc-600 hover:text-zinc-900 transition">New Goal</a>
+            <a href="/goals/history" className="text-zinc-600 hover:text-zinc-900 transition">Goals History</a>
+            <a href="/stats" className="text-zinc-600 hover:text-zinc-900 transition">Planner Stats</a>
+            <a href="/embeddings" className="text-zinc-600 hover:text-zinc-900 transition">Embeddings</a>
+            <a href="/settings" className="text-zinc-600 hover:text-zinc-900 transition">Settings</a>
           </div>
         </nav>
         <main>{children}</main>

@@ -1,11 +1,15 @@
 """User profile endpoints for planner personalization."""
 
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_current_user_id
 from shared.db.repositories import users_repo
 from shared.models import TimeWindow, UserProfile
+from agents.planner.agent import replan_all_goals
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -45,4 +49,25 @@ async def update_profile(body: UserProfileUpdate, user_id: str = Depends(get_cur
     base["user_id"] = user_id
     profile = UserProfile(**base)
     await users_repo.upsert(user_id, profile.model_dump(mode="json"), id_field="user_id")
+
+    # Trigger automatic replan if critical scheduling settings changed.
+    # This ensures sleep_window and preferred_time_windows changes take effect immediately.
+    settings_changed = (
+        body.sleep_window != current.sleep_window
+        or body.preferred_time_windows != current.preferred_time_windows
+        or body.daily_capacity_hours != current.daily_capacity_hours
+        or body.max_topics_per_day != current.max_topics_per_day
+    )
+    if settings_changed:
+        try:
+            logger.info(
+                "User profile settings changed for %s; triggering global replan",
+                user_id,
+            )
+            await replan_all_goals(user_id, window_days=7)
+            logger.info("Replan completed for user %s", user_id)
+        except Exception as e:
+            logger.error("Replan failed after profile update: %s", e, exc_info=True)
+            # Do not fail the profile update if replan fails; user can manually replan.
+
     return profile

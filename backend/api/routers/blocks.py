@@ -34,7 +34,7 @@ def _apply_block_status(plan_doc: dict, block_id: str, status: BlockStatus) -> b
     """Update a block status inside a plan document in-memory."""
     for block in plan_doc.get("micro_blocks", []):
         if block.get("block_id") == block_id:
-            block["status"] = status
+            block["status"] = status.value if isinstance(status, BlockStatus) else str(status)
             return True
     return False
 
@@ -78,16 +78,12 @@ async def update_block_status(
         id_field="plan_id",
     )
 
-    # If missed or partial, replan immediately so the caller sees the new schedule.
-    if body.status in (BlockStatus.MISSED, BlockStatus.PARTIAL):
-        plans = await replan_all_goals(user_id, window_days=7)
-        updated_goal_plan = next((plan for plan in plans if plan.goal_id == plan_doc["goal_id"]), None)
-        return {
-            "status": "updated",
-            "replan": "completed",
-            "goal_id": plan_doc["goal_id"],
-            "plan_id": updated_goal_plan.plan_id if updated_goal_plan else None,
-            "total_blocks": len(updated_goal_plan.micro_blocks) if updated_goal_plan else 0,
-        }
-
-    return {"status": "updated", "replan": "none"}
+    # Returning without triggering an automatic global replan,
+    # to avoid user schedule churn. Replan now explicitly requires manual interaction
+    # or the background daily sweeper.
+    return {
+        "status": "updated",
+        "replan": "none",
+        "goal_id": plan_doc["goal_id"],
+        "plan_id": plan_doc["plan_id"],
+    }
