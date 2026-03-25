@@ -128,6 +128,22 @@ export const getPlanForGoal = (goalId: string) =>
 export const replanAllPlans = (window = 7) =>
   apiFetch(`/api/plans/replan-all?window=${window}`, { method: "POST" });
 
+export interface ReplanDriftResult {
+  status: string;
+  goals_affected: number;
+  missed_minutes: number;
+  missed_topics_count?: number;
+  extended_window_days?: number;
+  new_scheduled_blocks?: number;
+  new_scheduled_minutes?: number;
+  goals_planned?: number;
+  total_blocks?: number;
+  message?: string;
+}
+
+export const replanDrift = () =>
+  apiFetch<ReplanDriftResult>("/api/plans/replan-drift", { method: "POST" });
+
 // ─── Blocks ───
 export const updateBlockStatus = (blockId: string, status: string) =>
   apiFetch(`/api/blocks/${blockId}/status`, {
@@ -272,6 +288,7 @@ export interface MicroBlock {
   topic_id: string;
   start_dt: string;
   duration_min: number;
+  notes?: string;
   status: string;
   external_event_id?: string;
 }
@@ -435,3 +452,67 @@ export interface PlannerStatsResponse {
   disruption_index_available: number;
   ai_confidence_available: number;
 }
+
+// ─── Quiz ───
+export interface QuizOption {
+  label: string;
+  text: string;
+}
+
+export interface QuizQuestion {
+  question_id: number;
+  question: string;
+  options: QuizOption[];
+  correct_answer: string;
+  explanation: string;
+  topic_title: string;
+  difficulty: string;
+}
+
+export interface QuizResponse {
+  date: string;
+  topics: string[];
+  questions: QuizQuestion[];
+  total_questions: number;
+}
+
+export const generateQuiz = (date: string, numQuestions = 12) =>
+  apiFetch<QuizResponse>("/api/quiz/generate", {
+    method: "POST",
+    body: JSON.stringify({ date, num_questions: numQuestions }),
+  });
+
+export interface SaveQuizRequest {
+  date: string;
+  topics: string[];
+  questions: QuizQuestion[];
+  answers: Record<string, string>;
+  score_correct: number;
+  score_total: number;
+  score_pct: number;
+}
+
+export interface QuizAttempt {
+  quiz_id: string;
+  user_id: string;
+  date: string;
+  topics: string[];
+  questions: QuizQuestion[];
+  answers: Record<string, string>;
+  score_correct: number;
+  score_total: number;
+  score_pct: number;
+  completed_at: string;
+}
+
+export const saveQuizAttempt = (body: SaveQuizRequest) =>
+  apiFetch<{ quiz_id: string; status: string }>("/api/quiz/save", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const getQuizHistory = () =>
+  apiFetch<QuizAttempt[]>("/api/quiz/history");
+
+export const getQuizAttempt = (quizId: string) =>
+  apiFetch<QuizAttempt>(`/api/quiz/history/${quizId}`);

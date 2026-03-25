@@ -9,9 +9,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Sparkles,
   Trash2,
   XCircle,
 } from "lucide-react";
+import { QuizModal } from "@/components/QuizModal";
 
 import {
   deleteGoal,
@@ -70,6 +72,7 @@ export default function AllGoalsDashboard() {
   const [blockActionId, setBlockActionId] = useState<string | null>(null);
   const [blockError, setBlockError] = useState<string | null>(null);
   const [goalFilter, setGoalFilter] = useState<GoalFilter>("all");
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const [globalBlocks, setGlobalBlocks] = useState<GlobalBlock[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -219,6 +222,16 @@ export default function AllGoalsDashboard() {
     };
   }
 
+  function isTodayDate(dateStr: string) {
+    const d = parseDateKey(dateStr);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear()
+      && d.getMonth() === now.getMonth()
+      && d.getDate() === now.getDate()
+    );
+  }
+
   const activeGoals = goals.filter((g) => g.status === "active");
   const readyGoals = goals.filter((g) => g.knowledge_id && !g.active_plan_id && g.status !== "archived");
   const pausedGoals = goals.filter((g) => g.status === "paused");
@@ -289,7 +302,7 @@ export default function AllGoalsDashboard() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-4">
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:flex lg:flex-col">
             <h2 className="text-sm font-semibold text-zinc-900">Overview</h2>
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex items-center justify-between rounded-md bg-zinc-50 px-2.5 py-2">
@@ -311,7 +324,7 @@ export default function AllGoalsDashboard() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:flex lg:h-[420px] lg:flex-col">
             <h2 className="text-sm font-semibold text-zinc-900">Filter Goals</h2>
             <div className="mt-3">
               <Select value={goalFilter} onValueChange={(value) => setGoalFilter(value as GoalFilter)}>
@@ -336,27 +349,40 @@ export default function AllGoalsDashboard() {
                 <CalendarDays className="h-4 w-4 text-zinc-600" />
                 <h2 className="text-sm font-semibold text-zinc-900">Master Calendar</h2>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon-sm"
-                  className="border-zinc-300 bg-white"
-                  onClick={goPrevDate}
-                  disabled={selectedIndex <= 0}
+                  size="sm"
+                  className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 hover:from-indigo-100 hover:to-purple-100 hover:text-indigo-800 font-semibold shadow-sm transition-all duration-200 hover:shadow-md"
+                  onClick={() => setQuizOpen(true)}
+                  disabled={!selectedDate || selectedDateBlocks.length === 0}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  Create Quiz
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  className="border-zinc-300 bg-white"
-                  onClick={goNextDate}
-                  disabled={selectedIndex < 0 || selectedIndex >= availableDates.length - 1}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="border-zinc-300 bg-white"
+                    onClick={goPrevDate}
+                    disabled={selectedIndex <= 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="border-zinc-300 bg-white"
+                    onClick={goNextDate}
+                    disabled={selectedIndex < 0 || selectedIndex >= availableDates.length - 1}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -371,6 +397,7 @@ export default function AllGoalsDashboard() {
                 visibleDateChips.map((dateStr) => {
                   const { dayOfWeek, dayOfMonth } = formatDateHeader(dateStr);
                   const isSelected = selectedDate === dateStr;
+                  const isToday = isTodayDate(dateStr);
                   return (
                     <button
                       key={dateStr}
@@ -382,6 +409,11 @@ export default function AllGoalsDashboard() {
                           : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
                       }`}
                     >
+                      {isToday ? (
+                        <p className="text-[9px] font-semibold uppercase tracking-wider text-emerald-600">
+                          Today
+                        </p>
+                      ) : null}
                       <p className="text-[10px] font-semibold uppercase tracking-wider">{dayOfWeek}</p>
                       <p className="mt-0.5 text-base font-bold">{dayOfMonth}</p>
                     </button>
@@ -392,7 +424,7 @@ export default function AllGoalsDashboard() {
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1 no-scrollbar">
               {selectedDateBlocks.length === 0 ? (
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-8 text-center text-sm text-zinc-500">
                   No blocks for this date.
@@ -402,11 +434,18 @@ export default function AllGoalsDashboard() {
                   const isDone = block.status === "done";
                   const isPartial = block.status === "partial";
                   const isMissed = block.status === "missed";
+                  const blockTone = isDone
+                    ? "border-emerald-200 bg-emerald-50"
+                    : isMissed
+                    ? "border-rose-200 bg-rose-50"
+                    : isPartial
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-zinc-200 bg-zinc-50";
 
                   return (
                     <div
                       key={block.block_id}
-                      className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3"
+                      className={`rounded-lg border px-3 py-3 ${blockTone}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -434,16 +473,6 @@ export default function AllGoalsDashboard() {
                                 onClick={() => handleStatusChange(block.block_id, "done")}
                               >
                                 <CheckCircle2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="text-amber-600 hover:bg-amber-50"
-                                disabled={blockActionId === block.block_id}
-                                onClick={() => handleStatusChange(block.block_id, "partial")}
-                              >
-                                <Clock3 className="h-4 w-4" />
                               </Button>
                               <Button
                                 type="button"
@@ -482,10 +511,10 @@ export default function AllGoalsDashboard() {
                 No goals match this filter.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="h-[230px] overflow-x-auto overflow-y-auto pr-1 no-scrollbar">
                 <table className="w-full min-w-[760px] border-separate border-spacing-y-2">
                   <thead>
-                    <tr className="text-left text-xs uppercase tracking-wider text-zinc-500">
+                    <tr className="sticky top-0 z-10 bg-white text-left text-xs uppercase tracking-wider text-zinc-500">
                       <th className="px-2">Goal</th>
                       <th className="px-2">Status</th>
                       <th className="px-2">Deadline</th>
@@ -556,6 +585,12 @@ export default function AllGoalsDashboard() {
           </section>
         </div>
       </div>
+
+      <QuizModal
+        open={quizOpen}
+        onClose={() => setQuizOpen(false)}
+        selectedDate={selectedDate}
+      />
     </div>
   );
 }

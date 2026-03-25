@@ -151,12 +151,11 @@ async def _plan_single_habit_goal(goal_doc: dict, user_id: str, window_days: int
                     bstart = bstart.replace(tzinfo=timezone.utc)
                 if not bstart:
                     continue
-                # Carry forward all past blocks (done, partial, missed)
+                # Carry forward only completed/partially completed blocks
                 if bstart < now:
                     status = b.get("status", "scheduled")
-                    if status == "scheduled":
-                        b["status"] = "missed"  # Auto-mark stale blocks
-                    carried_blocks.append(MicroBlock(**b))
+                    if status in ("done", "partial"):
+                        carried_blocks.append(MicroBlock(**b))
 
     blocks = schedule_habit_blocks(
         goal=goal,
@@ -295,14 +294,12 @@ async def replan_all_goals(
                     bstart = bstart.replace(tzinfo=timezone.utc)
 
                 status = b.get("status", "scheduled")
-
-                # A1 FIX: Preserve ALL past blocks (done, partial, missed).
-                # Auto-mark stale past SCHEDULED blocks as MISSED.
+                # A1 FIX: Preserve ONLY done and partial blocks.
+                # Missed blocks correspond to unfinished work; they are dropped from the plan record.
+                # Because they are dropped, they grant no progress credit, and the macro-allocator
+                # will naturally reschedule their topic hours into the available capacity.
                 is_past = bstart and bstart < now
-                if status in ("done", "partial", "missed"):
-                    past_blocks.append(b)
-                elif is_past and status == "scheduled":
-                    b["status"] = "missed"
+                if status in ("done", "partial"):
                     past_blocks.append(b)
 
                 # Block time slots for done/partial so future goals don't overlap.

@@ -43,6 +43,7 @@ export default function RootLayout({
             <a href="/goals" className="text-zinc-600 hover:text-zinc-900 transition">Master Calendar</a>
             <a href="/goals/new" className="text-zinc-600 hover:text-zinc-900 transition">New Goal</a>
             <a href="/goals/history" className="text-zinc-600 hover:text-zinc-900 transition">Goals History</a>
+            <a href="/quiz-history" className="text-zinc-600 hover:text-zinc-900 transition">Quiz History</a>
             <a href="/stats" className="text-zinc-600 hover:text-zinc-900 transition">Planner Stats</a>
             <a href="/embeddings" className="text-zinc-600 hover:text-zinc-900 transition">Embeddings</a>
             <a href="/settings" className="text-zinc-600 hover:text-zinc-900 transition">Settings</a>

@@ -17,6 +17,32 @@ from shared.models.constraint import ConstraintType
 SLOT_MINUTES = 30
 
 
+def _hour_from_recurring_time(value: Any) -> int | None:
+    """Normalize recurring time inputs to an integer hour.
+
+    Data can arrive as int, datetime.time, or serialized strings (e.g. "14:00:00").
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, time):
+        return value.hour
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        # Accept plain hour strings like "14".
+        if raw.isdigit():
+            return int(raw)
+        # Accept time strings like "14:00" or "14:00:00".
+        try:
+            return time.fromisoformat(raw).hour
+        except ValueError:
+            return None
+    return None
+
+
 def _is_slot_in_recurring_window(slot_date: date, slot_hour: int, days_of_week: list[int], start_hour: int, end_hour: int) -> bool:
     if start_hour < end_hour:
         return slot_date.weekday() in days_of_week and start_hour <= slot_hour < end_hour
@@ -187,9 +213,10 @@ def build_availability_matrix(
             r_start = c.get("recurring_start")
             r_end = c.get("recurring_end")
             if days and r_start and r_end:
-                start_h = r_start if isinstance(r_start, int) else r_start.hour
-                end_h = r_end if isinstance(r_end, int) else r_end.hour
-                matrix.block_recurring(days, start_h, end_h)
+                start_h = _hour_from_recurring_time(r_start)
+                end_h = _hour_from_recurring_time(r_end)
+                if start_h is not None and end_h is not None:
+                    matrix.block_recurring(days, start_h, end_h)
 
     # Respect preferred study windows from user settings.
     # If windows are provided, only those windows are schedulable.

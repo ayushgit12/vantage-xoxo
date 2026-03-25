@@ -5,6 +5,7 @@ from .plan import Plan, MacroAllocation, MicroBlock, BlockStatus
 from .user import UserProfile, TimeWindow
 from .constraint import TimeConstraint, ConstraintType
 from .agent_log import AgentLog
+from .quiz import QuizAttempt, QuizOptionModel, QuizQuestionModel
 from .planner_ai import (
     PlannerAIInput,
     PlannerAIRecommendation,
@@ -24,4 +25,5 @@ __all__ = [
     "AgentLog",
     "PlannerAIInput", "PlannerAIRecommendation", "PlannerAIFallbackReason",
     "PlannerQualityScore", "PlannerRiskFlags", "PlannerExplanation",
+    "QuizAttempt", "QuizOptionModel", "QuizQuestionModel",
 ]

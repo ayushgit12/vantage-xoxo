@@ -10,6 +10,8 @@ import {
   CalendarDays,
   CheckCircle2,
   Database,
+  Moon,
+  Sun,
   Target,
 } from "lucide-react";
 
@@ -53,6 +55,18 @@ const stats = [
 export default function Home() {
   return (
     <div className="min-h-screen pb-24">
+      <div className="relative z-20 mx-auto flex w-full max-w-6xl justify-end px-6 pt-6">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 gap-2 border-zinc-300 bg-white/90 px-4 text-zinc-700 backdrop-blur hover:bg-white"
+        >
+          <Sun className="h-4 w-4" />
+          <Moon className="h-4 w-4" />
+          Light / Dark
+        </Button>
+      </div>
+
       <div className="pointer-events-none fixed inset-0 z-0">
         <div className="absolute left-[-10%] top-[-25%] h-[620px] w-[620px] rounded-full bg-zinc-300/20 blur-[140px]" />
         <div className="absolute bottom-[-25%] right-[-8%] h-[560px] w-[560px] rounded-full bg-zinc-400/15 blur-[120px]" />

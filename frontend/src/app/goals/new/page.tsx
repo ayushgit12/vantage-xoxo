@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createGoalFromScenario, getScenarioSuggestions, type TimeWindow } from "@/lib/api";
 import { toDeadlineIso } from "@/lib/schedule";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { AlertTriangle, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -25,6 +25,12 @@ function formatHour(hour: number) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
+function getTodayStart() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 export default function NewGoalPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,7 +47,11 @@ export default function NewGoalPage() {
   const [lastSuggestedFor, setLastSuggestedFor] = useState("");
   const [priority, setPriority] = useState("medium");
   const [deadlineDate, setDeadlineDate] = useState<Date | undefined>(undefined);
+  const [weeklyHoursText, setWeeklyHoursText] = useState("");
+  const [weeklyHoursRiskLoading, setWeeklyHoursRiskLoading] = useState(false);
+  const [showWeeklyHoursWarning, setShowWeeklyHoursWarning] = useState(false);
   const suggestionRequestRef = useRef(0);
+  const weeklyHoursTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasVisibleSuggestions = suggestionsLoading || scenarioSuggestions.length > 0 || !!suggestionError;
 
   useEffect(() => {
@@ -95,6 +105,36 @@ export default function NewGoalPage() {
     };
   }, [scenarioText, lastSuggestedFor]);
 
+  useEffect(() => {
+    const value = Number(weeklyHoursText);
+    const exceedsRecommended = Number.isFinite(value) && value > 40;
+
+    if (weeklyHoursTimerRef.current) {
+      clearTimeout(weeklyHoursTimerRef.current);
+      weeklyHoursTimerRef.current = null;
+    }
+
+    if (!weeklyHoursText || !exceedsRecommended) {
+      setWeeklyHoursRiskLoading(false);
+      setShowWeeklyHoursWarning(false);
+      return;
+    }
+
+    setShowWeeklyHoursWarning(false);
+    setWeeklyHoursRiskLoading(true);
+
+    weeklyHoursTimerRef.current = setTimeout(() => {
+      setWeeklyHoursRiskLoading(false);
+      setShowWeeklyHoursWarning(true);
+    }, 1300);
+
+    return () => {
+      if (weeklyHoursTimerRef.current) {
+        clearTimeout(weeklyHoursTimerRef.current);
+      }
+    };
+  }, [weeklyHoursText]);
+
   function addRestrictedSlot() {
     setRestrictedSlots((prev) => [
       ...prev,
@@ -132,7 +172,15 @@ export default function NewGoalPage() {
     const form = new FormData(e.currentTarget);
 
     const scenario = scenarioText.trim();
-    const manualDeadline = deadlineText.trim();
+    const manualDeadline = deadlineDate ? format(deadlineDate, "yyyy-MM-dd") : deadlineText.trim();
+    if (manualDeadline) {
+      const selectedDate = new Date(`${manualDeadline}T00:00:00`);
+      if (selectedDate < getTodayStart()) {
+        setError("Deadline cannot be earlier than today.");
+        setLoading(false);
+        return;
+      }
+    }
     const materialUrls = (form.get("urls") as string)
       .split("\n")
       .map((u) => u.trim())
@@ -266,7 +314,29 @@ export default function NewGoalPage() {
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-zinc-800">Weekly Hours</label>
-                  <input name="weekly_hours" type="number" step="0.5" min="0.5" max="80" className="dark-input" placeholder="e.g., 10" />
+                  <input
+                    name="weekly_hours"
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="80"
+                    className="dark-input"
+                    placeholder="e.g., 10"
+                    value={weeklyHoursText}
+                    onChange={(e) => setWeeklyHoursText(e.target.value)}
+                  />
+                  {weeklyHoursRiskLoading ? (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div className="mb-1 h-2 w-28 animate-pulse rounded bg-amber-200" />
+                      <p className="text-xs text-amber-700">Checking your past consistency...</p>
+                    </div>
+                  ) : null}
+                  {showWeeklyHoursWarning ? (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>As per your history, you are usually not able to commit this many hours each week.</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -297,7 +367,11 @@ export default function NewGoalPage() {
                       <Calendar
                         mode="single"
                         selected={deadlineDate}
-                        onSelect={setDeadlineDate}
+                        onSelect={(date) => {
+                          setDeadlineDate(date);
+                          setDeadlineText(date ? format(date, "yyyy-MM-dd") : "");
+                        }}
+                        disabled={{ before: getTodayStart() }}
                         captionLayout="label"
                         className="w-auto"
                       />

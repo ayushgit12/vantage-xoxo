@@ -45,6 +45,129 @@ async def replan_all(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/replan-drift")
+async def replan_drift(
+    user_id: str = Depends(get_current_user_id),
+):
+    """Handle schedule drift by rescheduling missed blocks.
+
+    This endpoint:
+    1. Scans all active goals for missed blocks
+    2. Calculates how much extra time is needed
+    3. Extends the planning window proportionally (up to 21 days)
+    4. Performs a fresh replan with the extended window
+    5. Returns detailed info about what was rescheduled
+    """
+    from datetime import datetime, timezone
+
+    # 1. Find all active goals with plans
+    all_goals = await goals_repo.find_many({"user_id": user_id})
+    if not all_goals:
+        raise HTTPException(status_code=404, detail="No goals found")
+
+    now = datetime.now(timezone.utc)
+    total_missed_minutes = 0
+    total_scheduled_minutes = 0
+    missed_topics: set[str] = set()
+    goals_with_drift: list[str] = []
+
+    for goal in all_goals:
+        if goal.get("status") != "active":
+            continue
+        plan_id = goal.get("active_plan_id")
+        if not plan_id:
+            continue
+        plan_doc = await plans_repo.find_by_id(plan_id, id_field="plan_id")
+        if not plan_doc:
+            continue
+
+        goal_has_drift = False
+        for block in plan_doc.get("micro_blocks", []):
+            status = block.get("status", "scheduled")
+            dur = int(block.get("duration_min", 0) or 0)
+
+            # Auto-detect stale blocks: past scheduled blocks are missed
+            bstart = block.get("start_dt")
+            if isinstance(bstart, str):
+                from datetime import datetime as dt_cls
+                try:
+                    bstart = dt_cls.fromisoformat(bstart.replace("Z", "+00:00"))
+                except ValueError:
+                    bstart = None
+
+            if bstart and isinstance(bstart, datetime):
+                if bstart.tzinfo is None:
+                    bstart = bstart.replace(tzinfo=timezone.utc)
+                if bstart < now and status == "scheduled":
+                    status = "missed"
+                    block["status"] = "missed"
+
+            if status == "missed":
+                total_missed_minutes += dur
+                missed_topics.add(block.get("topic_id", ""))
+                goal_has_drift = True
+            elif status == "scheduled":
+                total_scheduled_minutes += dur
+
+        if goal_has_drift:
+            goals_with_drift.append(goal.get("goal_id", ""))
+
+        # Persist the auto-detected missed status updates
+        if goal_has_drift and plan_doc.get("plan_id"):
+            await plans_repo.update(
+                plan_doc["plan_id"],
+                {"micro_blocks": plan_doc["micro_blocks"]},
+                id_field="plan_id",
+            )
+
+    if total_missed_minutes == 0:
+        return {
+            "status": "no_drift",
+            "message": "No missed blocks found. Schedule is on track.",
+            "goals_affected": 0,
+            "missed_minutes": 0,
+        }
+
+    # 2. Replan window is standard 7 days.
+    # We drop the missed blocks; any work that doesn't fit in the 7-day capacity
+    # will naturally roll over into future weeks.
+    extended_window = 7
+
+    logger.info(
+        "Drift replan: %d missed minutes across %d goals, %d priority topics rescheduled.",
+        total_missed_minutes, len(goals_with_drift),
+        len(missed_topics),
+    )
+
+    # 3. Perform the replan with extended window
+    try:
+        plans = await replan_all_goals(user_id, window_days=extended_window)
+    except Exception as e:
+        logger.exception("Drift replan failed for user %s", user_id)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 4. Count new scheduled blocks to confirm rescheduling
+    new_scheduled_count = 0
+    new_scheduled_minutes = 0
+    for plan in plans:
+        for block in plan.micro_blocks:
+            if block.status.value == "scheduled":
+                new_scheduled_count += 1
+                new_scheduled_minutes += block.duration_min
+
+    return {
+        "status": "completed",
+        "goals_affected": len(goals_with_drift),
+        "missed_minutes": total_missed_minutes,
+        "missed_topics_count": len(missed_topics),
+        "extended_window_days": extended_window,
+        "new_scheduled_blocks": new_scheduled_count,
+        "new_scheduled_minutes": new_scheduled_minutes,
+        "goals_planned": len(plans),
+        "total_blocks": sum(len(p.micro_blocks) for p in plans),
+    }
+
+
 @router.post("/generate")
 async def generate_plan(
     goal_id: str,

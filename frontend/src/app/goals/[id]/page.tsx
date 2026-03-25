@@ -27,7 +27,7 @@ import {
   getGoalSuggestions,
   getKnowledge,
   getPlanForGoal,
-  replanAllPlans,
+  replanDrift,
   syncCalendar,
   triggerIngestStream,
   updateBlockStatus,
@@ -409,9 +409,15 @@ export default function GoalDetailPage() {
             disabled={Boolean(actionLoading)}
             onClick={() =>
               void runAction("replan", async () => {
-                await replanAllPlans(7);
+                const result = await replanDrift();
                 await loadData();
-                setMessage("Replan completed.");
+                if (result.status === "no_drift") {
+                  setMessage(result.message || "No drift detected.");
+                } else {
+                  setMessage(
+                    `Replan completed — ${result.new_scheduled_blocks ?? 0} blocks scheduled for the upcoming week.`
+                  );
+                }
               })
             }
           >
@@ -564,7 +570,7 @@ export default function GoalDetailPage() {
                   return (
                     <div
                       key={step}
-                      className={`rounded-md border px-2 py-1.5 text-xs ${
+                      className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-xs ${
                         isActive
                           ? "border-zinc-900 bg-zinc-900 text-white"
                           : isDone
@@ -572,7 +578,8 @@ export default function GoalDetailPage() {
                           : "border-zinc-200 bg-white text-zinc-500"
                       }`}
                     >
-                      {step}
+                      <span>{step}</span>
+                      {isDone ? <span aria-label={`${step} completed`}>✅</span> : null}
                     </div>
                   );
                 })}
@@ -885,7 +892,9 @@ export default function GoalDetailPage() {
                               {formatTime(block.start_dt)} · {block.duration_min}m
                             </p>
                             <p className={`mt-1 text-sm font-semibold text-zinc-900 ${isDone ? "line-through opacity-70" : ""}`}>
-                              {knowledge?.topics.find((t) => t.topic_id === block.topic_id)?.title || `Topic ${block.topic_id.slice(0, 8)}`}
+                              {knowledge?.topics.find((t) => t.topic_id === block.topic_id)?.title
+                                || block.notes?.trim()
+                                || goal.title}
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
