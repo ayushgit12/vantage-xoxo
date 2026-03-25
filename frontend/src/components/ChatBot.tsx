@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { BACKEND_URL } from "@/lib/env";
 
@@ -9,7 +10,151 @@ interface Message {
   content: string;
 }
 
+interface GoalDraftFromChat {
+  scenario: string;
+  deadline?: string;
+}
+
+const GOAL_ACK_DELAY_MS = 700;
+const GOAL_REDIRECT_DELAY_MS = 900;
+
+function toIsoDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(base: Date, months: number): Date {
+  const next = new Date(base);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function addYears(base: Date, years: number): Date {
+  const next = new Date(base);
+  next.setFullYear(next.getFullYear() + years);
+  return next;
+}
+
+function parseRelativeDateToIso(input: string): string | null {
+  const text = input.toLowerCase().trim();
+  if (!text) return null;
+
+  const now = new Date();
+
+  if (/\bday after tomorrow\b/.test(text)) {
+    return toIsoDate(addDays(now, 2));
+  }
+  if (/\btomorrow\b/.test(text)) {
+    return toIsoDate(addDays(now, 1));
+  }
+
+  const inMatch = text.match(/\bin\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)\b/);
+  if (inMatch) {
+    const qty = Number(inMatch[1]);
+    const unit = inMatch[2];
+    if (Number.isFinite(qty) && qty > 0) {
+      if (unit.startsWith("day")) return toIsoDate(addDays(now, qty));
+      if (unit.startsWith("week")) return toIsoDate(addDays(now, qty * 7));
+      if (unit.startsWith("month")) return toIsoDate(addMonths(now, qty));
+      if (unit.startsWith("year")) return toIsoDate(addYears(now, qty));
+    }
+  }
+
+  const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const nextWeekdayMatch = text.match(/\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/);
+  if (nextWeekdayMatch) {
+    const target = weekdays.indexOf(nextWeekdayMatch[1]);
+    if (target >= 0) {
+      const current = now.getDay();
+      let delta = (target - current + 7) % 7;
+      if (delta === 0) delta = 7;
+      return toIsoDate(addDays(now, delta));
+    }
+  }
+
+  return null;
+}
+
+function parseDateToIso(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const isoMatch = trimmed.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoMatch) return isoMatch[1];
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return toIsoDate(parsed);
+  }
+
+  const relative = parseRelativeDateToIso(trimmed);
+  if (relative) {
+    return relative;
+  }
+
+  return null;
+}
+
+function extractGoalDraftFromMessage(text: string): GoalDraftFromChat | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  const intentPatterns = [
+    /(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?goal\b/i,
+    /(?:please\s+)?set\s+(?:me\s+)?(?:a\s+)?goal\b/i,
+    /(?:please\s+)?new\s+goal\b/i,
+    /(?:please\s+)?goal\s+for\b/i,
+    /(?:please\s+)?goal\s+to\b/i,
+    /(?:please\s+)?help\s+me\s+plan\b/i,
+    /(?:please\s+)?plan\s+(?:a\s+)?goal\b/i,
+  ];
+  const hasCreateIntent = intentPatterns.some((pattern) => pattern.test(normalized));
+  if (!hasCreateIntent) return null;
+
+  let scenario = normalized
+    .replace(/^(please\s+)?(create|add|make)\s+(me\s+)?(a\s+)?goal\s*(of|for|to)?\s*/i, "")
+    .replace(/^(please\s+)?set\s+(me\s+)?(a\s+)?goal\s*(of|for|to)?\s*/i, "")
+    .replace(/^(please\s+)?new\s+goal\s*(of|for|to)?\s*/i, "")
+    .replace(/^(please\s+)?goal\s*(of|for|to)?\s*/i, "")
+    .replace(/^(please\s+)?help\s+me\s+plan\s*(for|to)?\s*/i, "")
+    .replace(/^(please\s+)?plan\s+(a\s+)?goal\s*(for|to)?\s*/i, "")
+    .trim();
+
+  scenario = scenario.replace(/^(i\s+want\s+to\s+)/i, "I want to ");
+  if (!scenario) {
+    scenario = normalized;
+  }
+
+  const deadlinePhraseRegex = /(?:deadline\s*(?:of|is|to)?|by|until)\s+([^,.!?]+)/i;
+  const deadlineMatch = scenario.match(deadlinePhraseRegex) ?? normalized.match(deadlinePhraseRegex);
+  let deadlineIso: string | undefined;
+  if (deadlineMatch?.[1]) {
+    const parsed = parseDateToIso(deadlineMatch[1]);
+    if (parsed) {
+      deadlineIso = parsed;
+      // Keep scenario focused on the goal statement and remove date/deadline phrase.
+      scenario = scenario.replace(deadlineMatch[0], "").trim();
+      scenario = scenario.replace(/[,.!?;:\-\s]+$/, "").trim();
+    }
+  }
+
+  if (!scenario) {
+    scenario = normalized;
+  }
+
+  return { scenario, deadline: deadlineIso };
+}
+
 export default function ChatBot() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -36,6 +181,40 @@ export default function ChatBot() {
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || streaming) return;
+
+    const goalDraft = extractGoalDraftFromMessage(text);
+    if (goalDraft) {
+      const userMsg: Message = { role: "user", content: text };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      setThinking(true);
+      setStreaming(true);
+
+      const params = new URLSearchParams();
+      params.set("scenario", goalDraft.scenario);
+      if (goalDraft.deadline) {
+        params.set("deadline", goalDraft.deadline);
+      }
+
+      window.setTimeout(() => {
+        setThinking(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "For sure, let me help you with that. Opening goal setup now.",
+          },
+        ]);
+
+        window.setTimeout(() => {
+          setOpen(false);
+          setStreaming(false);
+          router.push(`/goals/new?${params.toString()}`);
+        }, GOAL_REDIRECT_DELAY_MS);
+      }, GOAL_ACK_DELAY_MS);
+
+      return;
+    }
 
     const userMsg: Message = { role: "user", content: text };
     const updatedMessages = [...messages, userMsg];

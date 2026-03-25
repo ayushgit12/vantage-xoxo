@@ -18,13 +18,18 @@ export default function NewGoalPage() {
   const [scenarioSuggestions, setScenarioSuggestions] = useState<string[]>([]);
   const [restrictedSlots, setRestrictedSlots] = useState<TimeWindow[]>([]);
   const [scenarioText, setScenarioText] = useState("");
+  const [deadlineText, setDeadlineText] = useState("");
   const [lastSuggestedFor, setLastSuggestedFor] = useState("");
   const suggestionRequestRef = useRef(0);
 
   useEffect(() => {
     const scenarioFromQuery = searchParams.get("scenario")?.trim() || "";
+    const deadlineFromQuery = searchParams.get("deadline")?.trim() || "";
     if (scenarioFromQuery) {
       setScenarioText(scenarioFromQuery);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(deadlineFromQuery)) {
+      setDeadlineText(deadlineFromQuery);
     }
   }, [searchParams]);
 
@@ -105,7 +110,7 @@ export default function NewGoalPage() {
     const form = new FormData(e.currentTarget);
 
     const scenario = scenarioText.trim();
-    const manualDeadline = form.get("deadline") as string;
+    const manualDeadline = deadlineText.trim();
     const materialUrls = (form.get("urls") as string)
       .split("\n")
       .map((u) => u.trim())
@@ -202,7 +207,13 @@ export default function NewGoalPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1 text-cyan-100">Deadline (optional for habits)</label>
-            <input name="deadline" type="date" className="dark-input" />
+            <input
+              name="deadline"
+              type="date"
+              className="dark-input"
+              value={deadlineText}
+              onChange={(e) => setDeadlineText(e.target.value)}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-cyan-100">Weekly Hours (optional)</label>
