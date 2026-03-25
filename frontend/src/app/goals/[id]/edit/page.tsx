@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { getGoal, updateGoal, type Goal, type GoalPriority, type GoalStatus, type TimeWindow } from "@/lib/api";
 import { toDeadlineIso } from "@/lib/schedule";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { FormSectionSkeleton } from "@/components/ui/app-skeletons";
 
 const PRIORITIES: GoalPriority[] = ["high", "medium", "low"];
 const STATUSES: GoalStatus[] = ["active", "paused", "completed", "archived"];
@@ -79,7 +91,7 @@ export default function EditGoalPage() {
     void load();
   }, [goalId]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
@@ -103,148 +115,192 @@ export default function EditGoalPage() {
   }
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500">Loading goal editor...</div>;
+    return (
+      <div className="mx-auto max-w-4xl space-y-4 px-6 py-8">
+        <FormSectionSkeleton />
+        <FormSectionSkeleton />
+      </div>
+    );
   }
 
   if (!goal) {
-    return <div className="p-8 text-center text-red-400">Goal not found</div>;
+    return <div className="p-8 text-center text-red-500">Goal not found</div>;
   }
 
   return (
-    <div className="mx-auto max-w-2xl glass-card p-8 mt-8">
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-400">Goal Editor</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-cyan-50">Edit Goal</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Update the goal metadata that shapes priority, completion state, and planning behavior.
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">Goal Editor</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">Edit Goal</h1>
+          <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+            Update metadata and scheduling preferences for this goal.
           </p>
         </div>
-        <Link href={`/goals/${goalId}`} className="rounded-xl border border-white/[0.08] px-4 py-2 text-sm font-medium text-slate-400 hover:bg-white/[0.04]">
-          Cancel
-        </Link>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/goals/${goalId}`}>Cancel</Link>
+        </Button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-cyan-100">Title</label>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} className="dark-input" required />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-cyan-100">Description</label>
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} className="dark-input" />
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-cyan-100">Priority</label>
-            <select value={priority} onChange={(event) => setPriority(event.target.value as GoalPriority)} className="dark-select">
-              {PRIORITIES.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-cyan-100">Status</label>
-            <select value={status} onChange={(event) => setStatus(event.target.value as GoalStatus)} className="dark-select">
-              {STATUSES.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-cyan-100">Deadline</label>
-            <input type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} className="dark-input" required />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-cyan-100">Weekly Effort</label>
-            <input type="number" min="0.5" step="0.5" value={weeklyEffort} onChange={(event) => setWeeklyEffort(event.target.value)} className="dark-input" placeholder="Optional" />
-          </div>
-        </div>
-
-        {/* Restricted Time Slots */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="mb-0 block text-sm font-medium text-cyan-100">Restricted Time Slots</label>
-            <button
-              type="button"
-              onClick={addRestrictedSlot}
-              className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
-            >
-              + Add Restriction
-            </button>
-          </div>
-          <p className="text-xs text-slate-500 mb-2">
-            Times when you do NOT want this goal scheduled.
-          </p>
-          {restrictedSlots.map((slot, idx) => (
-            <div key={idx} className="flex flex-col gap-2 rounded-xl border border-white/[0.08] p-3 mb-2 bg-white/[0.02]">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  <label className="text-xs text-slate-500">From</label>
-                  <select
-                    value={slot.start_hour}
-                    onChange={(e) => updateRestrictedSlot(idx, "start_hour", Number(e.target.value))}
-                    className="dark-select text-sm !w-auto"
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, "0")}:00
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-1">
-                  <label className="text-xs text-slate-500">To</label>
-                  <select
-                    value={slot.end_hour}
-                    onChange={(e) => updateRestrictedSlot(idx, "end_hour", Number(e.target.value))}
-                    className="dark-select text-sm !w-auto"
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, "0")}:00
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeRestrictedSlot(idx)}
-                  className="ml-auto text-xs text-red-400 hover:text-red-300"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="flex gap-1">
-                {DAY_LABELS.map((label, day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(idx, day)}
-                    className={`px-2 py-0.5 text-xs rounded-full border ${
-                      slot.days.includes(day)
-                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
-                        : "bg-white/[0.02] text-slate-500 border-white/[0.1]"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card className="border border-zinc-200 bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Goal Details</CardTitle>
+            <CardDescription>Core properties used by the planner.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Title</label>
+              <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
             </div>
-          ))}
-        </div>
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Description</label>
+              <Textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Priority</label>
+              <Select value={priority} onValueChange={(value) => setPriority(value as GoalPriority)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORITIES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Status</label>
+              <Select value={status} onValueChange={(value) => setStatus(value as GoalStatus)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Deadline</label>
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(event) => setDeadline(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-800">Weekly Effort (hours)</label>
+              <Input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={weeklyEffort}
+                onChange={(event) => setWeeklyEffort(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        <Card className="border border-zinc-200 bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Restricted Time Slots</CardTitle>
+            <CardDescription>Prevent scheduling during these windows.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={addRestrictedSlot}>
+                Add Restriction
+              </Button>
+            </div>
 
-        <button disabled={saving} className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 py-2.5 text-white hover:brightness-110 disabled:opacity-50 transition">
+            {restrictedSlots.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500">
+                No restricted windows configured.
+              </p>
+            ) : (
+              restrictedSlots.map((slot, idx) => (
+                <div key={idx} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4">
+                  <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">From</label>
+                      <Select
+                        value={String(slot.start_hour)}
+                        onValueChange={(value) => updateRestrictedSlot(idx, "start_hour", Number(value))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {String(h).padStart(2, "0")}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">To</label>
+                      <Select
+                        value={String(slot.end_hour)}
+                        onValueChange={(value) => updateRestrictedSlot(idx, "end_hour", Number(value))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {String(h).padStart(2, "0")}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeRestrictedSlot(idx)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {DAY_LABELS.map((label, day) => (
+                      <Button
+                        key={day}
+                        type="button"
+                        variant={slot.days.includes(day) ? "secondary" : "outline"}
+                        size="xs"
+                        onClick={() => toggleDay(idx, day)}
+                        className="rounded-full"
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+
+        <Button type="submit" disabled={saving} className="h-10 bg-zinc-900 px-6 text-white hover:bg-zinc-800">
           {saving ? "Saving..." : "Save Goal"}
-        </button>
+        </Button>
       </form>
     </div>
   );
