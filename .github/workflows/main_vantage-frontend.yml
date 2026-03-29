@@ -10,6 +10,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:   # 👈 ADD THIS
+      contents: read
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +41,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+
+    permissions:   # 👈 ADD THIS (MOST IMPORTANT)
+      id-token: write
+      contents: read
 
     steps:
       - name: Download artifact
