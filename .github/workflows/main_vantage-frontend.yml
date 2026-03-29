@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    permissions:   # 👈 ADD THIS
+    permissions:
       contents: read
       id-token: write
 
@@ -23,15 +23,14 @@ jobs:
           node-version: '20.x'
 
       - name: Install dependencies
-        run: |
-          cd frontend
-          npm install
+        working-directory: frontend
+        run: npm install
 
       - name: Build Next.js app
-        run: |
-          cd frontend
-          npm run build
+        working-directory: frontend
+        run: npm run build
 
+      # ✅ Upload ONLY frontend content
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -42,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
-    permissions:   # 👈 ADD THIS (MOST IMPORTANT)
+    permissions:
       id-token: write
       contents: read
 
@@ -59,9 +58,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_F713B53E93674D29972B4A79862CC730 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_11F5D52F055B43C1A630466B5EB43BCC }}
 
-      - name: Deploy to Azure
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'vantage-frontend'
           slot-name: 'Production'
-          package: frontend
+          package: .
